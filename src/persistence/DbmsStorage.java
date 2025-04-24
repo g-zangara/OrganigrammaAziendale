@@ -454,33 +454,73 @@ public class DbmsStorage implements StorageStrategy {
                     }
                 }
 
-                // Trova la radice (unità senza parent o con nome "Acme Corp")
-                OrganizationalUnit rootUnit = null;
+                // Qui sta il problema principale: la ricerca della radice avviene DOPO aver già ricostruito tutte le relazioni
+                // A questo punto, tutte le unità già hanno il loro parent impostato, ma c'è un problema...
+                // Non stiamo ritornando l'intera struttura, ma solo la radice. Le altre unità potrebbero non essere accessibili
+                // Quindi dobbiamo ritornare tutto l'albero delle unità, non solo la radice
+                System.out.println("\n*** Identificazione e verifica dell'albero completo ***");
 
-                // Prima cerca per nome "Acme Corp"
+                // Stampa tutte le unità e le loro relazioni per debug
+                System.out.println("Verifica struttura di tutte le unità caricate:");
                 for (OrganizationalUnit unit : unitsMap.values()) {
-                    if (unit.getName().equals("Acme Corp")) {
-                        rootUnit = unit;
-                        System.out.println("Trovata radice per nome: " + unit.getName());
-                        break;
+                    System.out.println("- Unità: " + unit.getName() + " (" + unit.getType() + ")");
+                    if (unit.getParent() != null) {
+                        System.out.println("  → Parent: " + unit.getParent().getName());
+                    } else {
+                        System.out.println("  → È una unità root");
+                    }
+
+                    System.out.println("  → Sottounità: " + unit.getSubUnits().size());
+                    for (OrganizationalUnit subUnit : unit.getSubUnits()) {
+                        System.out.println("    - " + subUnit.getName());
+                    }
+
+                    System.out.println("  → Ruoli: " + unit.getRoles().size());
+                }
+
+                // Trova la radice dell'albero (unità senza parent)
+                OrganizationalUnit rootUnit = null;
+                List<OrganizationalUnit> rootUnits = new ArrayList<>();
+
+                for (OrganizationalUnit unit : unitsMap.values()) {
+                    if (unit.getParent() == null) {
+                        rootUnits.add(unit);
+                        System.out.println("Trovata una unità root: " + unit.getName() + " (" + unit.getType() + ")");
                     }
                 }
 
-                // Se non trovata, cerca unità senza parent
-                if (rootUnit == null) {
-                    for (OrganizationalUnit unit : unitsMap.values()) {
-                        if (!parentMap.containsKey(unit.hashCode())) {
+                System.out.println("Trovate " + rootUnits.size() + " unità root");
+
+                if (rootUnits.size() == 1) {
+                    // Se c'è una sola unità root, la usiamo come radice
+                    rootUnit = rootUnits.get(0);
+                    System.out.println("Utilizzo " + rootUnit.getName() + " come unità root principale");
+                } else if (rootUnits.size() > 1) {
+                    // Se ci sono più unità root, dobbiamo scegliere quella giusta
+                    // Strategia: prima cerchiamo se c'è un'unità con nome specifico (es. "Acme Corp")
+                    boolean foundNamedRoot = false;
+                    for (OrganizationalUnit unit : rootUnits) {
+                        String name = unit.getName().toLowerCase();
+                        if (name.contains("acme") || name.contains("root") ||
+                                name.contains("azienda") || name.contains("company") ||
+                                name.contains("corp")) {
                             rootUnit = unit;
-                            System.out.println("Trovata radice per parent null: " + unit.getName());
+                            foundNamedRoot = true;
+                            System.out.println("Trovata unità root con nome speciale: " + unit.getName());
                             break;
                         }
                     }
-                }
 
-                // Se ancora non trovata, prendi la prima unità
-                if (rootUnit == null && !unitsMap.isEmpty()) {
+                    // Se non troviamo una radice con nome specifico, prendiamo la prima
+                    if (!foundNamedRoot) {
+                        rootUnit = rootUnits.get(0);
+                        System.out.println("Nessuna radice con nome specifico, uso la prima: " + rootUnit.getName());
+                    }
+                } else if (!unitsMap.isEmpty()) {
+                    // Non ci sono unità root ma il database non è vuoto - problema di relazioni
+                    // Prendiamo la prima unità disponibile come root
                     rootUnit = unitsMap.values().iterator().next();
-                    System.out.println("Nessuna radice chiara trovata, usando: " + rootUnit.getName());
+                    System.out.println("ATTENZIONE: Nessuna unità root trovata! Uso " + rootUnit.getName() + " come radice");
                 }
 
                 if (rootUnit != null) {
@@ -672,11 +712,14 @@ public class DbmsStorage implements StorageStrategy {
         // Genera un ID univoco basato su hashCode (usiamo un valore assoluto per evitare ID negativi)
         int unitId = Math.abs(unit.hashCode());
 
-        // Determina il tipo di unità organizzativa
-        String unitType = unit instanceof Department ? "DEPARTMENT" :
-                unit instanceof Group ? "GROUP" : "UNKNOWN";
+        // Determina il tipo di unità organizzativa basandosi su getType() dell'unità
+        // Ma convertiamo in maiuscolo per uniformità
+        String unitType = unit.getType().toUpperCase();
 
-        System.out.println("Salvando unità: " + unit.getName() + " (ID: " + unitId + ", Tipo: " + unitType + ")");
+        System.out.println("Salvando unità: " + unit.getName() + " (ID: " + unitId +
+                ", Tipo Java: " + unit.getType() + ", Tipo DB: " + unitType +
+                ", Istanza: " + (unit instanceof Group ? "Group" :
+                unit instanceof Department ? "Department" : "Unknown"));
         if (parentId != null) {
             System.out.println(" - Con parent ID: " + parentId);
         } else {
@@ -834,15 +877,25 @@ public class DbmsStorage implements StorageStrategy {
                 String type = rs.getString("type");
 
                 OrganizationalUnit unit;
-                if ("DEPARTMENT".equals(type)) {
+                String upperType = type.toUpperCase();
+
+                // Confrontiamo con i tipi convertiti in maiuscolo per coerenza
+                if ("DEPARTMENT".equals(upperType)) {
                     unit = new Department(name);
                     System.out.println("Caricato dipartimento: " + name + " (ID: " + id + ")");
-                } else if ("GROUP".equals(type)) {
+                } else if ("GROUP".equals(upperType)) {
                     unit = new Group(name);
                     System.out.println("Caricato gruppo: " + name + " (ID: " + id + ")");
                 } else {
-                    unit = new Department(name); // Default
-                    System.out.println("Caricata unità di tipo sconosciuto (default=Department): " + name + " (ID: " + id + ")");
+                    // Se il tipo non è riconosciuto, facciamo un secondo tentativo con il nome del tipo
+                    System.out.println("Tentativo di riconoscimento del tipo: " + type);
+                    if (type.toUpperCase().contains("GROUP")) {
+                        unit = new Group(name);
+                        System.out.println("Caricato gruppo (riconoscimento alternativo): " + name);
+                    } else {
+                        unit = new Department(name); // Default fallback
+                        System.out.println("Caricata unità di tipo sconosciuto (default=Department): " + name + " (ID: " + id + ")");
+                    }
                 }
 
                 unit.setDescription(description);
