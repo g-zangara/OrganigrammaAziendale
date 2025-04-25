@@ -375,8 +375,18 @@ public class OrgChartManager {
                 // Log del tipo di radice caricata
                 System.out.println("Caricata unità radice di tipo: " + loadedRoot.getClass().getSimpleName());
 
+                // NUOVA VERIFICA: La radice DEVE essere di tipo Board
+                if (!(loadedRoot instanceof Board)) {
+                    String errorMsg = "La radice dell'organigramma deve essere di tipo Board. Tipo trovato: "
+                            + loadedRoot.getClass().getSimpleName();
+                    System.err.println(errorMsg);
+                    ErrorManager.registerError(errorMsg);
+                    Logger.logError(errorMsg, "Errore di Validazione");
+                    return false;
+                }
+
                 // Per Board, assicuriamo che abbia almeno un ruolo Presidente se non ne ha
-                if (loadedRoot instanceof Board && loadedRoot.getRoles().isEmpty()) {
+                if (loadedRoot.getRoles().isEmpty()) {
                     System.out.println("Aggiunto ruolo Presidente alla Board radice");
                     loadedRoot.addRole(new Role("Presidente", "Board President"));
                 }

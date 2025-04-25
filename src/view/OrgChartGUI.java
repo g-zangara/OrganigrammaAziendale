@@ -11,6 +11,7 @@ import javax.swing.tree.*;
 import java.awt.*;
 import java.io.File;
 import java.util.*;
+import java.util.List;
 
 /**
  * Main application window for the Organization Chart Manager.
@@ -578,7 +579,10 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
     }
 
     /**
-     * Remove the currently selected organizational unit
+     * Remove the currently selected organizational unit.
+     * If the unit is empty (no employees and no subunits), it will be removed without confirmation.
+     * If the unit contains employees or subunits, a confirmation dialog will be shown with the count
+     * of elements that will be removed.
      */
     private void removeSelectedUnit() {
         DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode)
@@ -597,32 +601,82 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
         }
 
         OrganizationalUnit selectedUnit = (OrganizationalUnit) selectedObject;
+        DefaultMutableTreeNode parentNode = (DefaultMutableTreeNode) selectedNode.getParent();
 
-        int choice = JOptionPane.showConfirmDialog(this,
-                "Are you sure you want to delete " + selectedUnit.getName() + "?",
-                "Confirm Deletion", JOptionPane.YES_NO_OPTION);
+        if (parentNode == null) {
+            return; // Impossible condition, but just to be safe
+        }
 
-        if (choice == JOptionPane.YES_OPTION) {
-            DefaultMutableTreeNode parentNode = (DefaultMutableTreeNode) selectedNode.getParent();
-            if (parentNode != null) {
-                Object parentObject = parentNode.getUserObject();
-                if (parentObject instanceof OrganizationalUnit) {
-                    OrganizationalUnit parentUnit = (OrganizationalUnit) parentObject;
-                    manager.removeUnit(parentUnit, selectedUnit);
+        Object parentObject = parentNode.getUserObject();
+        if (!(parentObject instanceof OrganizationalUnit)) {
+            return; // Impossible condition, but just to be safe
+        }
 
-                    // Show confirmation
-                    JOptionPane.showMessageDialog(this,
-                            "Unit '" + selectedUnit.getName() + "' has been removed.",
-                            "Unit Removed",
-                            JOptionPane.INFORMATION_MESSAGE);
+        OrganizationalUnit parentUnit = (OrganizationalUnit) parentObject;
 
-                    // Select the parent node and show its details
-                    TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
-                    TreePath path = new TreePath(pathToParent);
-                    orgTree.setSelectionPath(path);
-                    orgTree.scrollPathToVisible(path);
-                    showUnitDetails(parentUnit);
-                }
+        // Check if the unit is empty (no employees and no subunits)
+        List<OrganizationalUnit> subUnits = selectedUnit.getSubUnits();
+
+        // Count total employees in all roles of this unit
+        int totalEmployees = 0;
+        for (Role role : selectedUnit.getRoles()) {
+            totalEmployees += role.getEmployees().size();
+        }
+
+        boolean isEmpty = subUnits.isEmpty() && totalEmployees == 0;
+
+        // If the unit is empty, remove it without confirmation
+        if (isEmpty) {
+            manager.removeUnit(parentUnit, selectedUnit);
+
+            // Show confirmation
+            JOptionPane.showMessageDialog(this,
+                    "Unit '" + selectedUnit.getName() + "' has been removed.",
+                    "Unit Removed",
+                    JOptionPane.INFORMATION_MESSAGE);
+
+            // Select the parent node and show its details
+            TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
+            TreePath path = new TreePath(pathToParent);
+            orgTree.setSelectionPath(path);
+            orgTree.scrollPathToVisible(path);
+            showUnitDetails(parentUnit);
+        }
+        // If the unit contains employees or subunits, show a confirmation dialog
+        else {
+            // Build confirmation message with counts
+            StringBuilder message = new StringBuilder();
+            message.append("The unit '").append(selectedUnit.getName()).append("' contains:\n");
+
+            if (!subUnits.isEmpty()) {
+                message.append("- ").append(subUnits.size()).append(subUnits.size() == 1 ? " subunit\n" : " subunits\n");
+            }
+
+            if (totalEmployees > 0) {
+                message.append("- ").append(totalEmployees).append(totalEmployees == 1 ? " employee\n" : " employees\n");
+            }
+
+            message.append("\nAre you sure you want to delete this unit and all its contents?");
+
+            int choice = JOptionPane.showConfirmDialog(this,
+                    message.toString(),
+                    "Confirm Deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+            if (choice == JOptionPane.YES_OPTION) {
+                manager.removeUnit(parentUnit, selectedUnit);
+
+                // Show confirmation
+                JOptionPane.showMessageDialog(this,
+                        "Unit '" + selectedUnit.getName() + "' and all its contents have been removed.",
+                        "Unit Removed",
+                        JOptionPane.INFORMATION_MESSAGE);
+
+                // Select the parent node and show its details
+                TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
+                TreePath path = new TreePath(pathToParent);
+                orgTree.setSelectionPath(path);
+                orgTree.scrollPathToVisible(path);
+                showUnitDetails(parentUnit);
             }
         }
     }
