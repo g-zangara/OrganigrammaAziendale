@@ -72,7 +72,7 @@ public class OrgChartManager {
      * Create a new org chart with a root department
      */
     public void createNewOrgChart(String rootName) {
-        rootUnit = new Department(rootName);
+        rootUnit = new Board(rootName);
         notifyObservers();
     }
 

@@ -4,6 +4,7 @@ package model;
  * Enum representing the different types of organizational units.
  */
 public enum UnitType {
+    BOARD,
     DEPARTMENT,
     GROUP;
 
@@ -17,6 +18,8 @@ public enum UnitType {
             return unit instanceof Department;
         } else if (this == GROUP) {
             return unit instanceof Group;
+        } else if (this == BOARD) {
+            return unit instanceof Board;
         }
         return false;
     }

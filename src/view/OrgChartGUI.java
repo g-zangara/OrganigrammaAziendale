@@ -444,7 +444,19 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
         // Campo per il tipo di unità
         formPanel.add(new JLabel("Tipo di Unità:"));
-        String[] unitTypes = {"Dipartimento", "Gruppo"};
+
+        // Determine available unit types based on selection context
+        String[] unitTypes;
+
+        // Check if this is the root node (company)
+        if (selectedNode.isRoot()) {
+            // At root level, we can add Department, Group, or Board
+            unitTypes = new String[]{"Dipartimento", "Gruppo", "Board"};
+        } else {
+            // For non-root nodes, only Department and Group
+            unitTypes = new String[]{"Dipartimento", "Gruppo"};
+        }
+
         JComboBox<String> typeComboBox = new JComboBox<>(unitTypes);
         formPanel.add(typeComboBox);
 
@@ -486,6 +498,8 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
                 typeInEnglish = "Department";
             } else if (type.equals("Gruppo")) {
                 typeInEnglish = "Group";
+            } else if (type.equals("Board")) {
+                typeInEnglish = "Board"; // Board rimane invariato
             } else {
                 typeInEnglish = type; // Fallback al valore originale
             }
@@ -663,13 +677,29 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
         String unitType;
 
         if (unit instanceof model.Department) {
-            // Per i dipartimenti: Direttore e Consigliere
-            validRoleNames = new String[]{"Direttore", "Consigliere"};
+            // Per i dipartimenti: ruoli di base e specializzati - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+            validRoleNames = new String[]{
+                    "Direttore", "Consigliere", "Responsabile Amministrativo",
+                    "Referente Tecnico", "Responsabile Commerciale",
+                    "Responsabile Risorse Umane", "Responsabile Logistica",
+                    "Analista", "Consulente", "Data Protection Officer",
+                    "Chief Financial Officer", "Chief Technology Officer",
+                    "HR Specialist", "Quality Assurance Manager"
+            };
             unitType = "Dipartimento";
         } else if (unit instanceof model.Group) {
-            // Per i gruppi: Coordinatore e Consigliere
-            validRoleNames = new String[]{"Coordinatore", "Consigliere"};
+            // Per i gruppi: ruoli di base e specializzati - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+            validRoleNames = new String[]{
+                    "Coordinatore", "Consigliere", "Team Leader",
+                    "Tutor", "Collaboratore", "Membro", "Stagista"
+            };
             unitType = "Gruppo";
+        } else if (unit instanceof model.Board) {
+            // Per i board: ruoli specifici del board - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+            validRoleNames = new String[]{
+                    "Presidente", "Vicepresidente", "Segretario"
+            };
+            unitType = "Board";
         } else {
             // Nel caso improbabile di un altro tipo di unità
             validRoleNames = new String[]{"Consigliere"};
@@ -809,6 +839,8 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
             unitType = "Dipartimento";
         } else if (unit instanceof model.Group) {
             unitType = "Gruppo";
+        } else if (unit instanceof model.Board) {
+            unitType = "Board";
         } else {
             unitType = "Unità generica";
         }

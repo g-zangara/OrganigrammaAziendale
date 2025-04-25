@@ -9,7 +9,32 @@ import java.util.List;
 public enum RoleType {
     DIRETTORE("Direttore", UnitType.DEPARTMENT),
     COORDINATORE("Coordinatore", UnitType.GROUP),
-    CONSIGLIERE("Consigliere", UnitType.DEPARTMENT, UnitType.GROUP);
+    CONSIGLIERE("Consigliere", UnitType.DEPARTMENT, UnitType.GROUP),
+
+    PRESIDENTE("Presidente", UnitType.BOARD),
+    VICE_PRESIDENTE("Vicepresidente", UnitType.BOARD),
+    SEGRETARIO("Segretario", UnitType.BOARD),
+
+    RESPONSABILE_AMMINISTRATIVO("Responsabile Amministrativo", UnitType.DEPARTMENT),
+    REFERENTE_TECNICO("Referente Tecnico", UnitType.DEPARTMENT),
+    RESPONSABILE_COMMERCIALE("Responsabile Commerciale", UnitType.DEPARTMENT),
+    RESPONSABILE_RISORSE_UMANE("Responsabile Risorse Umane", UnitType.DEPARTMENT),
+    RESPONSABILE_LOGISTICA("Responsabile Logistica", UnitType.DEPARTMENT),
+    ANALISTA("Analista", UnitType.DEPARTMENT),
+    CONSULENTE("Consulente", UnitType.DEPARTMENT),
+
+    TEAM_LEADER("Team Leader", UnitType.GROUP),
+    TUTOR("Tutor", UnitType.GROUP),
+    COLLABORATORE("Collaboratore", UnitType.GROUP),
+    MEMBRO("Membro", UnitType.GROUP),
+    STAGISTA("Stagista", UnitType.GROUP),
+
+    DPO("Data Protection Officer", UnitType.DEPARTMENT),
+    CFO("Chief Financial Officer", UnitType.DEPARTMENT),
+    CTO("Chief Technology Officer", UnitType.DEPARTMENT),
+    HR_SPECIALIST("HR Specialist", UnitType.DEPARTMENT),
+    QA_MANAGER("Quality Assurance Manager", UnitType.DEPARTMENT);
+
 
     private final String roleName;
     private final List<UnitType> validUnitTypes;

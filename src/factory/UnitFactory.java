@@ -23,7 +23,8 @@ public class UnitFactory {
                 return new Department(name);
             case "Group":
                 return new Group(name);
-            // Additional types can be added here
+            case "Board":
+                return new Board(name);
             default:
                 throw new IllegalArgumentException("Unknown unit type: " + type);
         }

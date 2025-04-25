@@ -242,13 +242,29 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
             String unitType;
 
             if (currentUnit instanceof model.Department) {
-                // Per i dipartimenti: Direttore e Consigliere
-                validRoleNames = new String[]{"Direttore", "Consigliere"};
+                // Per i dipartimenti: ruoli di base e specializzati - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+                validRoleNames = new String[]{
+                        "Direttore", "Consigliere", "Responsabile Amministrativo",
+                        "Referente Tecnico", "Responsabile Commerciale",
+                        "Responsabile Risorse Umane", "Responsabile Logistica",
+                        "Analista", "Consulente", "Data Protection Officer",
+                        "Chief Financial Officer", "Chief Technology Officer",
+                        "HR Specialist", "Quality Assurance Manager"
+                };
                 unitType = "Dipartimento";
             } else if (currentUnit instanceof model.Group) {
-                // Per i gruppi: Coordinatore e Consigliere
-                validRoleNames = new String[]{"Coordinatore", "Consigliere"};
+                // Per i gruppi: ruoli di base e specializzati - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+                validRoleNames = new String[]{
+                        "Coordinatore", "Consigliere", "Team Leader",
+                        "Tutor", "Collaboratore", "Membro", "Stagista"
+                };
                 unitType = "Gruppo";
+            } else if (currentUnit instanceof model.Board) {
+                // Per i board: ruoli specifici del board - DEVONO corrispondere ESATTAMENTE ai nomi in RoleType.java
+                validRoleNames = new String[]{
+                        "Presidente", "Vicepresidente", "Segretario"
+                };
+                unitType = "Board";
             } else {
                 // Nel caso improbabile di un altro tipo di unità
                 validRoleNames = new String[]{"Consigliere"};

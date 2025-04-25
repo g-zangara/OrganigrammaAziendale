@@ -41,6 +41,11 @@ public class OrgChartValidator {
             throw new ValidationException("Groups cannot contain sub-units.");
         }
 
+        // Check if we're trying to add a Board unit to anything other than root
+        if (newUnit instanceof Board && parent instanceof OrganizationalUnit) {
+            throw new ValidationException("Board units can only be added at the root level of the organization chart.");
+        }
+
         // If parent is Department and new unit is not Group or Department, throw exception
         if (parent instanceof Department) {
             if (!(newUnit instanceof Group) && !(newUnit instanceof Department)) {
@@ -73,12 +78,22 @@ public class OrgChartValidator {
         // Check if this is a recognized role type
         if (roleType == null) {
             throw new ValidationException("Role name '" + role.getName() +
-                    "' is not a valid role type. Valid types are: Direttore, Coordinatore, Consigliere.");
+                    "' is not a valid role type. Valid types depend on the unit type (Department, Group, or Board).");
         }
 
         // Check if the role type is valid for this unit type
         if (!roleType.isValidFor(unit)) {
-            UnitType unitType = unit instanceof Department ? UnitType.DEPARTMENT : UnitType.GROUP;
+            UnitType unitType;
+            if (unit instanceof Department) {
+                unitType = UnitType.DEPARTMENT;
+            } else if (unit instanceof Group) {
+                unitType = UnitType.GROUP;
+            } else if (unit instanceof Board) {
+                unitType = UnitType.BOARD;
+            } else {
+                unitType = null; // Should never happen but prevents compiler errors
+            }
+
             throw new ValidationException("Role '" + roleType.getRoleName() +
                     "' cannot be assigned to a " + unitType + ".");
         }
