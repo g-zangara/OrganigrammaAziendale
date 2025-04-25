@@ -3,6 +3,8 @@ package controller;
 import factory.StorageFactory;
 import model.*;
 import persistence.*;
+import util.Logger;
+import util.ErrorManager;
 import java.util.*;
 
 /**
@@ -83,11 +85,42 @@ public class OrgChartManager {
 
     /**
      * Add a new organizational unit to a parent unit
+     * @return true if the unit was added successfully, false if validation failed
      */
-    public void addUnit(OrganizationalUnit parent, OrganizationalUnit newUnit) {
-        if (parent != null) {
+    /**
+     * Aggiunge una nuova unità organizzativa a un'unità padre.
+     * Effettua la validazione e lancia un'eccezione se l'unità non può essere aggiunta
+     * (ad esempio, se il padre è un gruppo o se il nome esiste già tra i fratelli).
+     *
+     * @param parent L'unità organizzativa padre a cui aggiungere la nuova unità
+     * @param newUnit La nuova unità da aggiungere
+     * @return true se l'unità è stata aggiunta con successo
+     * @throws ValidationException se la validazione fallisce
+     */
+    public boolean addUnit(OrganizationalUnit parent, OrganizationalUnit newUnit) throws ValidationException {
+        if (parent == null || newUnit == null) {
+            String errorMsg = "Unità padre o nuova unità non possono essere null";
+            util.Logger.logError(errorMsg, "Errore di Validazione");
+            throw new ValidationException(errorMsg);
+        }
+
+        try {
+            // Effettua la validazione prima di aggiungere
+            OrgChartValidator.validateAddUnit(parent, newUnit);
+
+            // La validazione è passata, aggiungi l'unità
             parent.addSubUnit(newUnit);
+
+            // Registra l'operazione per debugging
+            util.Logger.logDebug("Unità '" + newUnit.getName() + "' aggiunta all'unità '" + parent.getName() + "'", "Operazione Completata");
+
+            // Notifica gli osservatori del cambiamento
             notifyObservers();
+            return true;
+        } catch (ValidationException ex) {
+            // Rilanciamo l'eccezione per gestirla nella UI
+            util.Logger.logError("Errore nell'aggiunta di unità: " + ex.getMessage(), "Errore di Validazione");
+            throw ex; // Importante: rilanciamo l'eccezione per essere gestita dal chiamante
         }
     }
 
@@ -103,11 +136,43 @@ public class OrgChartManager {
 
     /**
      * Add a new role to an organizational unit
+     * @return true if the role was added successfully, false if validation failed
      */
-    public void addRole(OrganizationalUnit unit, Role role) {
-        if (unit != null) {
+    /**
+     * Aggiunge un ruolo a un'unità organizzativa, lanciando eventuali eccezioni di validazione.
+     * Questo metodo verifica prima che il ruolo sia valido per il tipo di unità
+     * e lancia un'eccezione se non lo è.
+     *
+     * @param unit l'unità a cui aggiungere il ruolo
+     * @param role il ruolo da aggiungere
+     * @return true se il ruolo è stato aggiunto con successo
+     * @throws ValidationException se il ruolo non è valido per l'unità
+     */
+    public boolean addRole(OrganizationalUnit unit, Role role) throws ValidationException {
+        if (unit == null || role == null) {
+            String errorMsg = "Unità o ruolo non possono essere null";
+            util.Logger.logError(errorMsg, "Errore di Validazione");
+            throw new ValidationException(errorMsg);
+        }
+
+        try {
+            // Effettua la validazione prima di aggiungere
+            OrgChartValidator.validateAddRole(unit, role);
+
+            // La validazione è passata, aggiungi il ruolo
             unit.addRole(role);
+            role.setUnit(unit); // Imposta la relazione bidirezionale
+
+            // Registra l'operazione per debugging
+            util.Logger.logDebug("Ruolo '" + role.getName() + "' aggiunto all'unità '" + unit.getName() + "'", "Operazione Completata");
+
+            // Notifica gli osservatori del cambiamento
             notifyObservers();
+            return true;
+        } catch (ValidationException ex) {
+            // Rilanciamo l'eccezione per gestirla nella UI
+            util.Logger.logError("Errore nell'aggiunta di ruolo: " + ex.getMessage(), "Errore di Validazione");
+            throw ex; // Importante: rilanciamo l'eccezione per essere gestita dal chiamante
         }
     }
 
@@ -139,6 +204,7 @@ public class OrgChartManager {
         if (unit != null && role != null) {
             // Prima controlliamo se ci sono dipendenti con questo ruolo
             if (roleHasEmployees(role)) {
+                ErrorManager.registerError("Non puoi rimuovere un ruolo con dipendenti associati.");
                 return false; // Non possiamo rimuovere un ruolo con dipendenti associati
             }
 
@@ -150,26 +216,53 @@ public class OrgChartManager {
     }
 
     /**
-     * Assign an employee to a role in an organizational unit
+     * Assegna un dipendente a un ruolo in un'unità organizzativa, con validazione.
+     * Questo metodo verifica che l'assegnazione sia valida rispetto alle regole
+     * di business dell'organigramma e lancia un'eccezione se ci sono problemi.
+     *
+     * @param employee il dipendente da assegnare
+     * @param role il ruolo a cui assegnare il dipendente
+     * @param unit l'unità in cui si trova il ruolo
+     * @return true se il dipendente è stato assegnato con successo
+     * @throws ValidationException se la validazione fallisce
      */
-    public void assignEmployeeToRole(Employee employee, Role role, OrganizationalUnit unit) {
-        if (employee != null && role != null && unit != null) {
-            // Set the unit for the role if it's not already set
+    public boolean assignEmployeeToRole(Employee employee, Role role, OrganizationalUnit unit) throws ValidationException {
+        if (employee == null || role == null || unit == null) {
+            String errorMsg = "Dipendente, ruolo o unità non possono essere null";
+            util.Logger.logError(errorMsg, "Errore di Validazione");
+            throw new ValidationException(errorMsg);
+        }
+
+        try {
+            // Effettua la validazione prima di procedere
+            OrgChartValidator.validateAssignEmployeeToRole(employee, role, unit);
+
+            // Imposta l'unità per il ruolo se non è già impostata
             if (role.getUnit() == null) {
                 role.setUnit(unit);
             }
 
-            // Add role to employee
+            // Aggiungi il ruolo al dipendente
             employee.addRole(role);
             employee.addUnit(unit);
 
-            // Add employee to the unit's employee list
+            // Aggiungi il dipendente alla lista dei dipendenti dell'unità
             List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
             if (!employees.contains(employee)) {
                 employees.add(employee);
             }
 
+            // Registra l'operazione per debugging
+            util.Logger.logDebug("Dipendente '" + employee.getName() + "' assegnato al ruolo '" +
+                    role.getName() + "' nell'unità '" + unit.getName() + "'", "Operazione Completata");
+
+            // Notifica gli osservatori del cambiamento
             notifyObservers();
+            return true;
+        } catch (ValidationException ex) {
+            // Rilanciamo l'eccezione per gestirla nella UI
+            util.Logger.logError("Errore nell'assegnazione del dipendente: " + ex.getMessage(), "Errore di Validazione");
+            throw ex; // Importante: rilanciamo l'eccezione per essere gestita dal chiamante
         }
     }
 
@@ -253,6 +346,7 @@ public class OrgChartManager {
             return storageStrategy.save(rootUnit, filePath);
         } catch (Exception e) {
             e.printStackTrace();
+            ErrorManager.registerError("Errore durante il salvataggio del file: " + e.getMessage());
             return false;
         }
     }
@@ -277,6 +371,12 @@ public class OrgChartManager {
 
             OrganizationalUnit loadedRoot = storageStrategy.load(filePath);
             if (loadedRoot != null) {
+                // Validazione della struttura caricata
+                if (!validateLoadedStructure(loadedRoot)) {
+                    ErrorManager.registerError("Il file contiene dati non validi secondo le regole di validazione. Caricamento interrotto.");
+                    return false;
+                }
+
                 rootUnit = loadedRoot;
 
                 // Importante: ricostruire la mappa employeesByUnit dopo il caricamento
@@ -288,86 +388,129 @@ public class OrgChartManager {
             return false;
         } catch (Exception e) {
             e.printStackTrace();
+            ErrorManager.registerError("Errore durante il caricamento del file: " + e.getMessage());
             return false;
         }
     }
 
     /**
-     * Ricostruisce la mappa employeesByUnit analizzando l'intera struttura
-     * organizzativa per trovare tutti i dipendenti.
+     * Valida la struttura caricata da file secondo le regole di business
+     * @param root L'unità radice da validare
+     * @return true se la struttura è valida, false altrimenti
      */
-    private void rebuildEmployeeMapping() {
-        // Svuota la mappa corrente
-        employeesByUnit.clear();
+    private boolean validateLoadedStructure(OrganizationalUnit root) {
+        try {
+            // Verifica che i nomi delle sottounità siano unici tra fratelli
+            validateUniqueNames(root);
 
-        System.out.println("*** Ricostruzione della mappa dei dipendenti ***");
+            // Verifica che le relazioni gerarchiche siano valide (gruppi non possono contenere sottounità)
+            validateHierarchy(root);
 
-        // Funzione ricorsiva per analizzare l'albero organizzativo
-        if (rootUnit != null) {
-            processUnitForEmployees(rootUnit);
+            // Verifica che i ruoli siano validi per i tipi di unità
+            validateRoles(root);
+
+            return true;
+        } catch (ValidationException e) {
+            ErrorManager.registerError("Errore di validazione: " + e.getMessage());
+            return false;
         }
-
-        // Stampa per debug
-        System.out.println("Mappa dipendenti ricostruita:");
-        int totalEmployees = 0;
-        for (Map.Entry<OrganizationalUnit, List<Employee>> entry : employeesByUnit.entrySet()) {
-            OrganizationalUnit unit = entry.getKey();
-            List<Employee> employees = entry.getValue();
-            totalEmployees += employees.size();
-            System.out.println("- Unità: " + unit.getName() + ", Dipendenti: " + employees.size());
-            for (Employee emp : employees) {
-                System.out.println("  + " + emp.getName() + " [" + emp.getUniqueId() + "]");
-                System.out.println("    Ruoli in questa unità: " + emp.getRoles().size());
-            }
-        }
-        System.out.println("Totale dipendenti trovati: " + totalEmployees);
     }
 
     /**
-     * Elabora ricorsivamente un'unità organizzativa per estrarre i dipendenti
+     * Verifica che i nomi delle sottounità siano unici tra fratelli
      */
-    private void processUnitForEmployees(OrganizationalUnit unit) {
+    private void validateUniqueNames(OrganizationalUnit unit) throws ValidationException {
         if (unit == null) return;
 
-        System.out.println("Elaborazione unità: " + unit.getName());
-        Set<Employee> uniqueEmployeesInUnit = new HashSet<>();
-
-        // Controlla tutti i ruoli in questa unità
-        for (Role role : unit.getRoles()) {
-            System.out.println("- Ruolo: " + role.getName() + ", dipendenti: " + role.getEmployees().size());
-
-            // Aggiungi tutti i dipendenti per questo ruolo
-            for (Employee emp : role.getEmployees()) {
-                System.out.println("  + Dipendente: " + emp.getName() + " [" + emp.getUniqueId() + "]");
-
-                // Assicurati che il ruolo abbia un riferimento all'unità
-                if (role.getUnit() == null) {
-                    role.setUnit(unit);
-                }
-
-                // Assicurati che il dipendente abbia un riferimento al ruolo e all'unità
-                if (!emp.getRoles().contains(role)) {
-                    emp.addRole(role);
-                }
-
-                // Aggiungi l'unità al dipendente per la relazione bidirezionale
-                emp.addUnit(unit);
-
-                // Aggiungi il dipendente all'insieme per questa unità
-                uniqueEmployeesInUnit.add(emp);
+        // Controllo nomi unici tra i figli diretti
+        Set<String> childNames = new HashSet<>();
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            if (!childNames.add(child.getName())) {
+                throw new ValidationException("Nome duplicato trovato: '" + child.getName() +
+                        "' in '" + unit.getName() + "'");
             }
         }
 
-        // Aggiunge i dipendenti all'unità nella mappa
-        if (!uniqueEmployeesInUnit.isEmpty()) {
-            List<Employee> employeeList = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
-            employeeList.addAll(uniqueEmployeesInUnit);
-            System.out.println("Aggiunti " + uniqueEmployeesInUnit.size() + " dipendenti all'unità " + unit.getName());
+        // Verifica ricorsivamente per ogni figlio
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            validateUniqueNames(child);
+        }
+    }
+
+    /**
+     * Verifica che le relazioni gerarchiche siano valide
+     * (i gruppi non possono contenere sottounità)
+     */
+    private void validateHierarchy(OrganizationalUnit unit) throws ValidationException {
+        if (unit == null) return;
+
+        // Se l'unità è un gruppo, non può avere sottounità
+        if (unit instanceof Group && !unit.getSubUnits().isEmpty()) {
+            throw new ValidationException("Il gruppo '" + unit.getName() +
+                    "' non può contenere sottounità");
         }
 
-        // Processa ricorsivamente le sottounità
-        for (OrganizationalUnit subUnit : unit.getSubUnits()) {
-            processUnitForEmployees(subUnit);
+        // Verifica ricorsivamente per ogni figlio
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            validateHierarchy(child);
+        }
+    }
+
+    /**
+     * Verifica che i ruoli siano validi per i tipi di unità
+     */
+    private void validateRoles(OrganizationalUnit unit) throws ValidationException {
+        if (unit == null) return;
+
+        // Verifica che i ruoli siano validi per il tipo di unità
+        for (Role role : unit.getRoles()) {
+            OrgChartValidator.validateAddRole(unit, role);
+        }
+
+        // Verifica ricorsivamente per ogni figlio
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            validateRoles(child);
+        }
+    }
+
+    /**
+     * Ricostruisce la mappa employeesByUnit dopo il caricamento da file
+     */
+    private void rebuildEmployeeMapping() {
+        // Pulisci la mappa attuale
+        employeesByUnit.clear();
+
+        // Visita ricorsivamente l'albero per ricostruire le associazioni
+        if (rootUnit != null) {
+            rebuildEmployeeMappingRecursive(rootUnit);
+        }
+    }
+
+    /**
+     * Helper per la ricostruzione ricorsiva della mappa employeesByUnit
+     */
+    private void rebuildEmployeeMappingRecursive(OrganizationalUnit unit) {
+        if (unit == null) return;
+
+        // Inizializza la lista degli employee per questa unità
+        List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
+
+        // Per ogni ruolo in questa unità, aggiungi gli employee associati
+        for (Role role : unit.getRoles()) {
+            for (Employee employee : role.getEmployees()) {
+                if (!employees.contains(employee)) {
+                    employees.add(employee);
+                }
+
+                // Assicuriamo che l'employee abbia anche questa unità e questo ruolo
+                employee.addUnit(unit);
+                employee.addRole(role);
+            }
+        }
+
+        // Procedi ricorsivamente con le sottounità
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            rebuildEmployeeMappingRecursive(child);
         }
     }
 }

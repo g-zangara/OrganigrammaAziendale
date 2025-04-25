@@ -224,58 +224,116 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
         JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         headerPanel.add(new JLabel("Roles in " + currentUnit.getName() + ":"));
 
-        JButton addButton = new JButton("Add Role");
+        JButton addButton = new JButton("★ Aggiungi Ruolo ★");
         addButton.addActionListener(e -> {
-            // Show dialog to add a new role
+            // Mostra una finestra di dialogo per aggiungere un nuovo ruolo
             JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
-                    "Add New Role", true);
+                    "Aggiungi Nuovo Ruolo", true);
             dialog.setLayout(new BorderLayout());
 
             JPanel formPanel = new JPanel(new GridLayout(2, 2, 5, 5));
             formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-            formPanel.add(new JLabel("Role Name:"));
-            JTextField nameField = new JTextField(20);
-            formPanel.add(nameField);
+            // Campo per il tipo di ruolo con menu a tendina
+            formPanel.add(new JLabel("Tipo di Ruolo:"));
 
-            formPanel.add(new JLabel("Description:"));
+            // Determina i ruoli validi in base al tipo di unità
+            String[] validRoleNames;
+            String unitType;
+
+            if (currentUnit instanceof model.Department) {
+                // Per i dipartimenti: Direttore e Consigliere
+                validRoleNames = new String[]{"Direttore", "Consigliere"};
+                unitType = "Dipartimento";
+            } else if (currentUnit instanceof model.Group) {
+                // Per i gruppi: Coordinatore e Consigliere
+                validRoleNames = new String[]{"Coordinatore", "Consigliere"};
+                unitType = "Gruppo";
+            } else {
+                // Nel caso improbabile di un altro tipo di unità
+                validRoleNames = new String[]{"Consigliere"};
+                unitType = "Unità generica";
+            }
+
+            // Menu a tendina per selezionare il ruolo
+            JComboBox<String> roleComboBox = new JComboBox<>(validRoleNames);
+            formPanel.add(roleComboBox);
+
+            // Campo per la descrizione
+            formPanel.add(new JLabel("Descrizione:"));
             JTextField descField = new JTextField(20);
             formPanel.add(descField);
 
             dialog.add(formPanel, BorderLayout.CENTER);
 
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            JButton cancelButton = new JButton("Cancel");
+            JButton cancelButton = new JButton("Annulla");
             cancelButton.addActionListener(ev -> dialog.dispose());
             buttonPanel.add(cancelButton);
 
-            JButton createButton = new JButton("Create");
+            JButton createButton = new JButton("Crea");
             createButton.addActionListener(ev -> {
-                String name = nameField.getText().trim();
+                // Ottieni i valori inseriti dall'utente
+                String roleName = (String) roleComboBox.getSelectedItem();
                 String description = descField.getText().trim();
 
-                if (name.isEmpty()) {
+                // Verifica che sia stato selezionato un ruolo
+                if (roleName == null || roleName.isEmpty()) {
                     JOptionPane.showMessageDialog(dialog,
-                            "Please enter a name for the role.", "Error",
+                            "Seleziona un tipo di ruolo valido.", "Errore",
                             JOptionPane.ERROR_MESSAGE);
                     return;
                 }
 
-                // Verifica che non esista già un ruolo con lo stesso nome in questo dipartimento
+                // Verifica che non esista già un ruolo con lo stesso nome in questa unità
                 for (Role existingRole : currentUnit.getRoles()) {
-                    if (existingRole.getName().equalsIgnoreCase(name)) {
+                    if (existingRole.getName().equalsIgnoreCase(roleName)) {
                         JOptionPane.showMessageDialog(dialog,
-                                "A role with this name already exists in this department.",
-                                "Duplicate Role",
+                                "Un ruolo con questo nome esiste già in questa unità.",
+                                "Ruolo Duplicato",
                                 JOptionPane.ERROR_MESSAGE);
                         return;
                     }
                 }
 
-                Role newRole = new Role(name, description);
-                manager.addRole(currentUnit, newRole);
+                // Crea il nuovo ruolo
+                Role newRole = new Role(roleName, description);
 
-                dialog.dispose();
+                try {
+                    // Tenta di aggiungere il ruolo all'unità
+                    boolean added = manager.addRole(currentUnit, newRole);
+
+                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                    String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" +
+                            currentUnit.getName() + "' (" + unitType + ").";
+
+                    // Registra il successo nel logger
+                    util.Logger.logInfo(successMessage, "Operazione Completata");
+
+                    // Mostra un messaggio di conferma all'utente
+                    JOptionPane.showMessageDialog(dialog.getOwner(),
+                            successMessage,
+                            "Ruolo Aggiunto",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    // Chiudi la finestra di dialogo
+                    dialog.dispose();
+                } catch (model.ValidationException ex) {
+                    // Gestione dell'errore di validazione
+
+                    // Crea un messaggio di errore dettagliato
+                    String errorMsg = "Errore nell'aggiunta del ruolo '" + roleName + "' all'unità '" +
+                            currentUnit.getName() + "' (" + unitType + "): " + ex.getMessage();
+
+                    // Registra l'errore nel logger e nell'ErrorManager
+                    util.Logger.logError(errorMsg, "Errore di Validazione", true);
+
+                    // Mostra un messaggio di errore all'utente
+                    JOptionPane.showMessageDialog(dialog,
+                            "Errore di validazione: " + ex.getMessage(),
+                            "Errore Validazione",
+                            JOptionPane.ERROR_MESSAGE);
+                }
             });
             buttonPanel.add(createButton);
 

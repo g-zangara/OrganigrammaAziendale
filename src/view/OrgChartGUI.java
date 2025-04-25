@@ -386,97 +386,174 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
     }
 
     /**
-     * Display a dialog to add a new organizational unit
+     * Mostra una finestra di dialogo per aggiungere una nuova unità organizzativa all'unità selezionata.
+     *
+     * Questa finestra permette di selezionare il tipo di unità (Dipartimento o Gruppo) e
+     * inserire un nome per la nuova unità. Gestisce gli errori in modo esplicito mostrando
+     * messaggi all'utente e impedendo operazioni non valide.
      */
     private void showAddUnitDialog() {
+        // Ottieni il nodo selezionato dall'albero dell'organigramma
         DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode)
                 orgTree.getLastSelectedPathComponent();
 
+        // Verifica che sia stato selezionato un nodo
         if (selectedNode == null) {
             JOptionPane.showMessageDialog(this,
-                    "Please select a parent unit first.", "Error",
+                    "Seleziona prima un'unità organizzativa.", "Errore",
                     JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Verifica che il nodo sia un'unità organizzativa
         Object nodeInfo = selectedNode.getUserObject();
         if (!(nodeInfo instanceof OrganizationalUnit)) {
+            JOptionPane.showMessageDialog(this,
+                    "L'elemento selezionato non è un'unità organizzativa.", "Errore",
+                    JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Ottieni l'unità organizzativa selezionata come genitore
         OrganizationalUnit parentUnit = (OrganizationalUnit) nodeInfo;
 
-        // Create dialog
-        JDialog dialog = new JDialog(this, "Add New Unit", true);
+        // Determina il tipo di unità genitore per i messaggi
+        String parentType;
+        if (parentUnit instanceof model.Department) {
+            parentType = "Dipartimento";
+        } else if (parentUnit instanceof model.Group) {
+            parentType = "Gruppo";
+
+            // I gruppi non possono contenere sottounità, mostriamo un messaggio e usciamo
+            JOptionPane.showMessageDialog(this,
+                    "I gruppi non possono contenere sottounità.",
+                    "Operazione non valida",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        } else {
+            parentType = "Unità generica";
+        }
+
+        // Crea la finestra di dialogo
+        JDialog dialog = new JDialog(this, "Aggiungi Nuova Unità", true);
         dialog.setLayout(new BorderLayout());
 
+        // Pannello per i campi di input
         JPanel formPanel = new JPanel(new GridLayout(3, 2, 5, 5));
         formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        formPanel.add(new JLabel("Unit Type:"));
-        String[] unitTypes = {"Department", "Group"};
+        // Campo per il tipo di unità
+        formPanel.add(new JLabel("Tipo di Unità:"));
+        String[] unitTypes = {"Dipartimento", "Gruppo"};
         JComboBox<String> typeComboBox = new JComboBox<>(unitTypes);
         formPanel.add(typeComboBox);
 
-        formPanel.add(new JLabel("Name:"));
+        // Campo per il nome dell'unità
+        formPanel.add(new JLabel("Nome:"));
         JTextField nameField = new JTextField(20);
         formPanel.add(nameField);
 
         dialog.add(formPanel, BorderLayout.CENTER);
 
+        // Pannello per i pulsanti
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Cancel");
+
+        // Pulsante per annullare
+        JButton cancelButton = new JButton("Annulla");
         cancelButton.addActionListener(e -> dialog.dispose());
         buttonPanel.add(cancelButton);
 
-        JButton createButton = new JButton("Create");
+        // Pulsante per creare l'unità
+        JButton createButton = new JButton("Crea");
         createButton.addActionListener(e -> {
+            // Ottieni i valori inseriti dall'utente
             String name = nameField.getText().trim();
+
+            // Verifica che sia stato inserito un nome
             if (name.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog,
-                        "Please enter a name for the unit.", "Error",
+                        "Inserisci un nome per l'unità.", "Errore",
                         JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
+            // Ottieni il tipo di unità selezionato
             String type = (String) typeComboBox.getSelectedItem();
 
-            // Use Factory to create appropriate unit type
-            OrganizationalUnit newUnit = UnitFactory.createUnit(type, name);
-            manager.addUnit(parentUnit, newUnit);
+            // Converti il tipo in inglese per la factory
+            String typeInEnglish;
+            if (type.equals("Dipartimento")) {
+                typeInEnglish = "Department";
+            } else if (type.equals("Gruppo")) {
+                typeInEnglish = "Group";
+            } else {
+                typeInEnglish = type; // Fallback al valore originale
+            }
 
-            // Show confirmation
-            JOptionPane.showMessageDialog(this,
-                    "Unit '" + name + "' has been added to '" + parentUnit.getName() + "'.",
-                    "Unit Added",
-                    JOptionPane.INFORMATION_MESSAGE);
+            // Usa la Factory per creare il tipo di unità appropriato
+            OrganizationalUnit newUnit = UnitFactory.createUnit(typeInEnglish, name);
 
-            dialog.dispose();
+            try {
+                // Tenta di aggiungere l'unità al genitore
+                // Questo lancerà un'eccezione se l'operazione non è valida
+                boolean added = manager.addUnit(parentUnit, newUnit);
 
-            // Make sure the tree selects the new unit node and updates the details panel
-            SwingUtilities.invokeLater(() -> {
-                // Find the newly added node in the tree
-                DefaultMutableTreeNode parentNode = unitToNodeMap.get(parentUnit);
-                if (parentNode != null) {
-                    // Look for the new unit's node among children
-                    for (int i = 0; i < parentNode.getChildCount(); i++) {
-                        DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) parentNode.getChildAt(i);
-                        Object userObject = childNode.getUserObject();
-                        if (userObject instanceof OrganizationalUnit) {
-                            OrganizationalUnit unit = (OrganizationalUnit) userObject;
-                            if (unit.equals(newUnit)) {
-                                // Select this node
-                                TreeNode[] pathToNode = treeModel.getPathToRoot(childNode);
-                                TreePath path = new TreePath(pathToNode);
-                                orgTree.setSelectionPath(path);
-                                orgTree.scrollPathToVisible(path);
-                                showUnitDetails(unit);
-                                break;
+                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                String successMessage = "Unità '" + name + "' (" + type + ") aggiunta a '" +
+                        parentUnit.getName() + "' (" + parentType + ").";
+
+                // Registra il successo nel logger
+                util.Logger.logInfo(successMessage, "Operazione Completata");
+
+                // Mostra un messaggio di conferma all'utente
+                JOptionPane.showMessageDialog(this,
+                        successMessage,
+                        "Unità Aggiunta",
+                        JOptionPane.INFORMATION_MESSAGE);
+
+                // Chiudi la finestra di dialogo
+                dialog.dispose();
+
+                // Aggiorna l'albero e seleziona il nuovo nodo
+                SwingUtilities.invokeLater(() -> {
+                    // Trova il nodo del genitore nell'albero
+                    DefaultMutableTreeNode parentNode = unitToNodeMap.get(parentUnit);
+                    if (parentNode != null) {
+                        // Cerca il nodo della nuova unità tra i figli
+                        for (int i = 0; i < parentNode.getChildCount(); i++) {
+                            DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) parentNode.getChildAt(i);
+                            Object userObject = childNode.getUserObject();
+                            if (userObject instanceof OrganizationalUnit) {
+                                OrganizationalUnit unit = (OrganizationalUnit) userObject;
+                                if (unit.equals(newUnit)) {
+                                    // Seleziona questo nodo
+                                    TreeNode[] pathToNode = treeModel.getPathToRoot(childNode);
+                                    TreePath path = new TreePath(pathToNode);
+                                    orgTree.setSelectionPath(path);
+                                    orgTree.scrollPathToVisible(path);
+                                    showUnitDetails(unit);
+                                    break;
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
+            } catch (model.ValidationException ex) {
+                // Gestione dell'errore di validazione
+
+                // Crea un messaggio di errore dettagliato
+                String errorMsg = "Errore nell'aggiunta dell'unità '" + name + "' a '" +
+                        parentUnit.getName() + "' (" + parentType + "): " + ex.getMessage();
+
+                // Registra l'errore nel logger e nell'ErrorManager
+                util.Logger.logError(errorMsg, "Errore di Validazione", true);
+
+                // Mostra un messaggio di errore all'utente
+                JOptionPane.showMessageDialog(dialog,
+                        "Errore di validazione: " + ex.getMessage(),
+                        "Errore Validazione",
+                        JOptionPane.ERROR_MESSAGE);
+            }
         });
         buttonPanel.add(createButton);
 
@@ -537,76 +614,146 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
     }
 
     /**
-     * Display a dialog to add a new role to the selected unit
+     * Mostra una finestra di dialogo per aggiungere un nuovo ruolo all'unità selezionata.
+     *
+     * In base alla selezione dell'albero, questa finestra mostrerà un menu a tendina con i ruoli
+     * validi per il tipo di unità selezionata (Dipartimento o Gruppo).
+     *
+     * Gestisce gli errori in modo esplicito mostrando un messaggio all'utente e registrando
+     * gli errori sia nel logger che nell'ErrorManager.
      */
     private void showAddRoleDialog() {
+        // Ottieni il nodo selezionato dall'albero dell'organigramma
         DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode)
                 orgTree.getLastSelectedPathComponent();
 
+        // Verifica che sia stato selezionato un nodo
         if (selectedNode == null) {
             JOptionPane.showMessageDialog(this,
-                    "Please select a unit first.", "Error",
+                    "Seleziona prima un'unità.", "Errore",
                     JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Verifica che il nodo sia un'unità organizzativa
         Object nodeInfo = selectedNode.getUserObject();
         if (!(nodeInfo instanceof OrganizationalUnit)) {
+            JOptionPane.showMessageDialog(this,
+                    "L'elemento selezionato non è un'unità organizzativa.", "Errore",
+                    JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Ottieni l'unità organizzativa selezionata
         OrganizationalUnit unit = (OrganizationalUnit) nodeInfo;
 
-        // Create dialog
-        JDialog dialog = new JDialog(this, "Add New Role", true);
+        // Crea la finestra di dialogo
+        JDialog dialog = new JDialog(this, "Aggiungi Nuovo Ruolo", true);
         dialog.setLayout(new BorderLayout());
 
+        // Pannello per i campi di input
         JPanel formPanel = new JPanel(new GridLayout(2, 2, 5, 5));
         formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        formPanel.add(new JLabel("Role Name:"));
-        JTextField nameField = new JTextField(20);
-        formPanel.add(nameField);
+        // Campo per il tipo di ruolo
+        formPanel.add(new JLabel("Tipo di Ruolo:"));
 
-        formPanel.add(new JLabel("Description:"));
+        // Determina i ruoli validi in base al tipo di unità
+        String[] validRoleNames;
+        String unitType;
+
+        if (unit instanceof model.Department) {
+            // Per i dipartimenti: Direttore e Consigliere
+            validRoleNames = new String[]{"Direttore", "Consigliere"};
+            unitType = "Dipartimento";
+        } else if (unit instanceof model.Group) {
+            // Per i gruppi: Coordinatore e Consigliere
+            validRoleNames = new String[]{"Coordinatore", "Consigliere"};
+            unitType = "Gruppo";
+        } else {
+            // Nel caso improbabile di un altro tipo di unità
+            validRoleNames = new String[]{"Consigliere"};
+            unitType = "Unità generica";
+        }
+
+        // Menu a tendina per selezionare il ruolo
+        JComboBox<String> roleComboBox = new JComboBox<>(validRoleNames);
+        formPanel.add(roleComboBox);
+
+        // Campo per la descrizione
+        formPanel.add(new JLabel("Descrizione:"));
         JTextField descField = new JTextField(20);
         formPanel.add(descField);
 
         dialog.add(formPanel, BorderLayout.CENTER);
 
+        // Pannello per i pulsanti
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Cancel");
+
+        // Pulsante per annullare
+        JButton cancelButton = new JButton("Annulla");
         cancelButton.addActionListener(e -> dialog.dispose());
         buttonPanel.add(cancelButton);
 
-        JButton createButton = new JButton("Create");
+        // Pulsante per creare il ruolo
+        JButton createButton = new JButton("Crea");
         createButton.addActionListener(e -> {
-            String name = nameField.getText().trim();
+            // Ottieni i valori inseriti dall'utente
+            String roleName = (String) roleComboBox.getSelectedItem();
             String description = descField.getText().trim();
 
-            if (name.isEmpty()) {
+            // Verifica che sia stato selezionato un ruolo
+            if (roleName == null || roleName.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog,
-                        "Please enter a name for the role.", "Error",
+                        "Seleziona un tipo di ruolo valido.", "Errore",
                         JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
-            Role newRole = new Role(name, description);
-            manager.addRole(unit, newRole);
+            // Crea il nuovo ruolo
+            Role newRole = new Role(roleName, description);
 
-            // Show confirmation
-            JOptionPane.showMessageDialog(this,
-                    "Role '" + name + "' has been added to unit '" + unit.getName() + "'.",
-                    "Role Added",
-                    JOptionPane.INFORMATION_MESSAGE);
+            try {
+                // Tenta di aggiungere il ruolo all'unità
+                // Questo lancerà un'eccezione se il ruolo non è valido per l'unità
+                boolean added = manager.addRole(unit, newRole);
 
-            dialog.dispose();
+                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" + unit.getName() + "' (" + unitType + ").";
 
-            // Force refresh the entire view
-            update();
+                // Registra il successo nel logger
+                util.Logger.logInfo(successMessage, "Operazione Completata");
 
-            // Select the unit node to display details
-            selectAndShowUnit(unit);
+                // Mostra un messaggio di conferma all'utente
+                JOptionPane.showMessageDialog(this,
+                        successMessage,
+                        "Ruolo Aggiunto",
+                        JOptionPane.INFORMATION_MESSAGE);
+
+                // Chiudi la finestra di dialogo
+                dialog.dispose();
+
+                // Aggiorna la visualizzazione dell'albero
+                update();
+
+                // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
+                selectAndShowUnit(unit);
+            } catch (model.ValidationException ex) {
+                // Gestione dell'errore di validazione
+
+                // Crea un messaggio di errore dettagliato
+                String errorMsg = "Errore nell'aggiunta del ruolo '" + roleName + "' all'unità '" +
+                        unit.getName() + "' (" + unitType + "): " + ex.getMessage();
+
+                // Registra l'errore nel logger e nell'ErrorManager
+                util.Logger.logError(errorMsg, "Errore di Validazione", true);
+
+                // Mostra un messaggio di errore all'utente
+                JOptionPane.showMessageDialog(dialog,
+                        "Errore di validazione: " + ex.getMessage(),
+                        "Errore Validazione",
+                        JOptionPane.ERROR_MESSAGE);
+            }
         });
         buttonPanel.add(createButton);
 
@@ -617,94 +764,172 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
     }
 
     /**
-     * Display a dialog to add a new employee to the selected unit
+     * Mostra una finestra di dialogo per aggiungere un nuovo dipendente all'unità selezionata.
+     *
+     * Questa finestra permette di inserire il nome di un nuovo dipendente e assegnarlo
+     * a uno dei ruoli disponibili nell'unità selezionata. Verifica prima che l'unità
+     * abbia dei ruoli definiti.
+     *
+     * Gestisce gli errori in modo esplicito mostrando messaggi all'utente e registrando
+     * gli errori sia nel logger che nell'ErrorManager.
      */
     private void showAddEmployeeDialog() {
+        // Ottieni il nodo selezionato dall'albero dell'organigramma
         DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode)
                 orgTree.getLastSelectedPathComponent();
 
+        // Verifica che sia stato selezionato un nodo
         if (selectedNode == null) {
             JOptionPane.showMessageDialog(this,
-                    "Please select a unit first.", "Error",
+                    "Seleziona prima un'unità organizzativa.", "Errore",
                     JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Verifica che il nodo sia un'unità organizzativa
         Object nodeInfo = selectedNode.getUserObject();
         if (!(nodeInfo instanceof OrganizationalUnit)) {
+            JOptionPane.showMessageDialog(this,
+                    "L'elemento selezionato non è un'unità organizzativa.", "Errore",
+                    JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // Get the selected unit
+        // Ottieni l'unità organizzativa selezionata
         OrganizationalUnit unit = (OrganizationalUnit) nodeInfo;
 
-        // First show the unit panel to make it visible and active
+        // Mostra prima il pannello dell'unità per renderlo visibile e attivo
         unitPanel.displayUnit(unit);
         CardLayout cardLayout = (CardLayout) detailPanel.getLayout();
         cardLayout.show(detailPanel, "UNIT");
 
-        // Check if the unit has roles
-        java.util.List<Role> availableRoles = unit.getRoles();
+        // Determina il tipo di unità per il messaggio
+        String unitType;
+        if (unit instanceof model.Department) {
+            unitType = "Dipartimento";
+        } else if (unit instanceof model.Group) {
+            unitType = "Gruppo";
+        } else {
+            unitType = "Unità generica";
+        }
 
+        // Verifica che l'unità abbia ruoli definiti
+        java.util.List<Role> availableRoles = unit.getRoles();
         if (availableRoles.isEmpty()) {
+            String errorMsg = "L'unità '" + unit.getName() + "' (" + unitType + ") non ha ruoli definiti. " +
+                    "Aggiungi prima almeno un ruolo.";
+
+            // Registra l'errore nel logger
+            util.Logger.logWarning(errorMsg, "Operazione Annullata");
+
+            // Mostra un messaggio all'utente
             JOptionPane.showMessageDialog(this,
-                    "This unit has no roles defined. Please add roles first.",
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                    errorMsg,
+                    "Nessun Ruolo Disponibile",
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        // Create dialog for adding an employee
-        JDialog dialog = new JDialog(this, "Add New Employee", true);
+        // Crea la finestra di dialogo per l'aggiunta di un dipendente
+        JDialog dialog = new JDialog(this, "Aggiungi Nuovo Dipendente", true);
         dialog.setLayout(new BorderLayout());
 
+        // Pannello per i campi di input
         JPanel formPanel = new JPanel(new GridLayout(2, 2, 5, 5));
         formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        formPanel.add(new JLabel("Employee Name:"));
+        // Campo per il nome del dipendente
+        formPanel.add(new JLabel("Nome Dipendente:"));
         JTextField nameField = new JTextField(20);
         formPanel.add(nameField);
 
-        formPanel.add(new JLabel("Assign to Role:"));
+        // Campo per selezionare il ruolo
+        formPanel.add(new JLabel("Assegna al Ruolo:"));
         JComboBox<Role> roleComboBox = new JComboBox<>(availableRoles.toArray(new Role[0]));
         formPanel.add(roleComboBox);
 
         dialog.add(formPanel, BorderLayout.CENTER);
 
+        // Pannello per i pulsanti
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Cancel");
+
+        // Pulsante per annullare
+        JButton cancelButton = new JButton("Annulla");
         cancelButton.addActionListener(e -> dialog.dispose());
         buttonPanel.add(cancelButton);
 
-        JButton createButton = new JButton("Create");
+        // Pulsante per creare il dipendente
+        JButton createButton = new JButton("Crea");
         createButton.addActionListener(e -> {
+            // Ottieni i valori inseriti dall'utente
             String name = nameField.getText().trim();
 
+            // Verifica che sia stato inserito un nome
             if (name.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog,
-                        "Please enter a name for the employee.", "Error",
+                        "Inserisci un nome per il dipendente.", "Errore",
                         JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
+            // Ottieni il ruolo selezionato
             Role selectedRole = (Role) roleComboBox.getSelectedItem();
+            if (selectedRole == null) {
+                JOptionPane.showMessageDialog(dialog,
+                        "Seleziona un ruolo per il dipendente.", "Errore",
+                        JOptionPane.ERROR_MESSAGE);
+                return;
+            }
 
+            // Crea il nuovo dipendente
             Employee newEmployee = new Employee(name);
-            manager.assignEmployeeToRole(newEmployee, selectedRole, unit);
 
-            // Show confirmation
-            JOptionPane.showMessageDialog(this,
-                    "Employee '" + name + "' has been added and assigned to role '" +
-                            selectedRole.getName() + "' in unit '" + unit.getName() + "'.",
-                    "Employee Added",
-                    JOptionPane.INFORMATION_MESSAGE);
+            try {
+                // Tenta di assegnare il dipendente al ruolo nell'unità
+                // Questo lancerà un'eccezione se l'assegnazione non è valida
+                boolean added = manager.assignEmployeeToRole(newEmployee, selectedRole, unit);
 
-            dialog.dispose();
+                // Se l'aggiunta è stata completata con successo
+                if (added) {
+                    // Crea il messaggio di successo
+                    String successMessage = "Dipendente '" + name + "' aggiunto e assegnato al ruolo '" +
+                            selectedRole.getName() + "' nell'unità '" + unit.getName() + "' (" + unitType + ").";
 
-            // Force refresh the entire view
-            update();
+                    // Registra il successo nel logger
+                    util.Logger.logInfo(successMessage, "Operazione Completata");
 
-            // Select the unit node to display details
-            selectAndShowUnit(unit);
+                    // Mostra un messaggio di conferma all'utente
+                    JOptionPane.showMessageDialog(this,
+                            successMessage,
+                            "Dipendente Aggiunto",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    // Chiudi la finestra di dialogo
+                    dialog.dispose();
+
+                    // Aggiorna la visualizzazione dell'albero
+                    update();
+
+                    // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
+                    selectAndShowUnit(unit);
+                }
+            } catch (model.ValidationException ex) {
+                // Gestione dell'errore di validazione
+
+                // Crea un messaggio di errore dettagliato
+                String errorMsg = "Errore nell'assegnazione del dipendente '" + name + "' al ruolo '" +
+                        selectedRole.getName() + "' nell'unità '" + unit.getName() + "' (" + unitType + "): " +
+                        ex.getMessage();
+
+                // Registra l'errore nel logger e nell'ErrorManager
+                util.Logger.logError(errorMsg, "Errore di Validazione", true);
+
+                // Mostra un messaggio di errore all'utente
+                JOptionPane.showMessageDialog(dialog,
+                        "Errore di validazione: " + ex.getMessage(),
+                        "Errore Validazione",
+                        JOptionPane.ERROR_MESSAGE);
+            }
         });
         buttonPanel.add(createButton);
 
