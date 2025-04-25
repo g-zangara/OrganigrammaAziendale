@@ -221,7 +221,8 @@ public class JsonStorage implements StorageStrategy {
 
         // Tipo dell'unità
         String unitType = unit instanceof Department ? "Department" :
-                (unit instanceof Group ? "Group" : "OrganizationalUnit");
+                unit instanceof Group ? "Group" :
+                        unit instanceof Board ? "Board" : "OrganizationalUnit";
         sb.append("  \"type\": \"").append(unitType).append("\",\n");
 
         // Nome e descrizione
@@ -288,8 +289,15 @@ public class JsonStorage implements StorageStrategy {
                 unit = new Department(unitName);
             } else if ("Group".equals(unitType)) {
                 unit = new Group(unitName);
+            } else if ("Board".equals(unitType)) {
+                unit = new Board(unitName);
             } else {
-                unit = new Department(unitName); // Default
+                // Se non riconosciamo il tipo, tentiamo di determinarlo dal nome
+                if (unitName.toLowerCase().contains("board") || unitName.toLowerCase().contains("comitato")) {
+                    unit = new Board(unitName);
+                } else {
+                    unit = new Department(unitName); // Default fallback
+                }
             }
             unit.setDescription(unitDescription);
 

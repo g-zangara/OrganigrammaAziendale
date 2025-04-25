@@ -68,7 +68,8 @@ public class CsvStorage implements StorageStrategy {
                     // Rigeneriamo sempre l'ID univoco usando il metodo getUnitId
                     String unitId = getUnitId(unit);
                     String unitType = unit instanceof Department ? "Department" :
-                            (unit instanceof Group ? "Group" : "Unit");
+                            unit instanceof Group ? "Group" :
+                                    unit instanceof Board ? "Board" : "Unit";
                     String parentId = unit.getParent() != null ? getUnitId(unit.getParent()) : "";
 
                     String line = String.join(CSV_SEPARATOR,
@@ -518,9 +519,18 @@ public class CsvStorage implements StorageStrategy {
             } else if ("Group".equals(type)) {
                 unit = new Group(name);
                 System.out.println("Creato Group: " + name + " [ID: " + id + "]");
+            } else if ("Board".equals(type)) {
+                unit = new Board(name);
+                System.out.println("Creato Board: " + name + " [ID: " + id + "]");
             } else {
-                unit = new Department(name); // Default to Department
-                System.out.println("Creato Department (default): " + name + " [ID: " + id + "]");
+                // Se il tipo non è riconosciuto, facciamo un tentativo con il nome
+                if (name.toLowerCase().contains("board") || name.toLowerCase().contains("comitato")) {
+                    unit = new Board(name);
+                    System.out.println("Creato Board (dal nome): " + name + " [ID: " + id + "]");
+                } else {
+                    unit = new Department(name); // Default to Department
+                    System.out.println("Creato Department (default): " + name + " [ID: " + id + "]");
+                }
             }
             unit.setDescription(description);
 
@@ -788,7 +798,8 @@ public class CsvStorage implements StorageStrategy {
                 OrganizationalUnit unit = entry.getValue();
                 String unitId = entry.getKey();
                 String unitType = unit instanceof Department ? "Department" :
-                        (unit instanceof Group ? "Group" : "Unit");
+                        unit instanceof Group ? "Group" :
+                                unit instanceof Board ? "Board" : "Unit";
                 String parentId = unit.getParent() != null ? getUnitId(unit.getParent()) : "";
 
                 String line = String.join(CSV_SEPARATOR,
@@ -898,8 +909,15 @@ public class CsvStorage implements StorageStrategy {
                 unit = new Department(name);
             } else if ("Group".equals(type)) {
                 unit = new Group(name);
+            } else if ("Board".equals(type)) {
+                unit = new Board(name);
             } else {
-                unit = new Department(name); // Default to Department
+                // Se il tipo non è riconosciuto, facciamo un tentativo con il nome
+                if (name.toLowerCase().contains("board") || name.toLowerCase().contains("comitato")) {
+                    unit = new Board(name);
+                } else {
+                    unit = new Department(name); // Default to Department
+                }
             }
 
             units.put(id, unit);

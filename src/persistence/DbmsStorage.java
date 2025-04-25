@@ -222,9 +222,9 @@ public class DbmsStorage implements StorageStrategy {
      */
     private OrganizationalUnit createDefaultStructure(String reason) {
         System.out.println("Creazione struttura di default: " + reason);
-        Department rootDept = new Department("Root Department");
-        rootDept.addRole(new Role("Manager", "Department Manager"));
-        return rootDept;
+        Board rootBoard = new Board("Root Board");
+        rootBoard.addRole(new Role("Presidente", "Board President"));
+        return rootBoard;
     }
 
     /**
@@ -551,10 +551,10 @@ public class DbmsStorage implements StorageStrategy {
             e.printStackTrace();
         }
 
-        // In caso di errore, restituisci una struttura di base
-        Department rootDept = new Department("Root Department");
-        rootDept.addRole(new Role("Manager", "Department Manager"));
-        return rootDept;
+        // In caso di errore, restituisci una struttura di base con Board
+        Board rootBoard = new Board("Root Board");
+        rootBoard.addRole(new Role("Presidente", "Board President"));
+        return rootBoard;
     }
 
     /**
@@ -719,7 +719,8 @@ public class DbmsStorage implements StorageStrategy {
         System.out.println("Salvando unità: " + unit.getName() + " (ID: " + unitId +
                 ", Tipo Java: " + unit.getType() + ", Tipo DB: " + unitType +
                 ", Istanza: " + (unit instanceof Group ? "Group" :
-                unit instanceof Department ? "Department" : "Unknown"));
+                unit instanceof Department ? "Department" :
+                        unit instanceof Board ? "Board" : "Unknown"));
         if (parentId != null) {
             System.out.println(" - Con parent ID: " + parentId);
         } else {
@@ -866,6 +867,7 @@ public class DbmsStorage implements StorageStrategy {
         String query = "SELECT id, name, description, type, parent_id FROM units";
 
         System.out.println("Caricamento unità organizzative dal database...");
+        System.out.println("Iniziando caricamento unità dal database");
 
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
@@ -879,6 +881,8 @@ public class DbmsStorage implements StorageStrategy {
                 OrganizationalUnit unit;
                 String upperType = type.toUpperCase();
 
+                System.out.println("Elaborando unità dal DB: " + name + " (ID: " + id + ", Tipo: " + type + ")");
+
                 // Confrontiamo con i tipi convertiti in maiuscolo per coerenza
                 if ("DEPARTMENT".equals(upperType)) {
                     unit = new Department(name);
@@ -886,12 +890,20 @@ public class DbmsStorage implements StorageStrategy {
                 } else if ("GROUP".equals(upperType)) {
                     unit = new Group(name);
                     System.out.println("Caricato gruppo: " + name + " (ID: " + id + ")");
+                } else if ("BOARD".equals(upperType)) {
+                    unit = new Board(name);
+                    System.out.println("Caricato board: " + name + " (ID: " + id + ")");
+                    System.out.println("*** BOARD RILEVATO *** - " + name + " (ID: " + id + ")");
                 } else {
                     // Se il tipo non è riconosciuto, facciamo un secondo tentativo con il nome del tipo
                     System.out.println("Tentativo di riconoscimento del tipo: " + type);
                     if (type.toUpperCase().contains("GROUP")) {
                         unit = new Group(name);
                         System.out.println("Caricato gruppo (riconoscimento alternativo): " + name);
+                    } else if (type.toUpperCase().contains("BOARD")) {
+                        unit = new Board(name);
+                        System.out.println("Caricato board (riconoscimento alternativo): " + name);
+                        System.out.println("*** BOARD RILEVATO (alt) *** - " + name + " (ID: " + id + ")");
                     } else {
                         unit = new Department(name); // Default fallback
                         System.out.println("Caricata unità di tipo sconosciuto (default=Department): " + name + " (ID: " + id + ")");

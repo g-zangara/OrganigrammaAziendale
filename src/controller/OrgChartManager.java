@@ -69,7 +69,8 @@ public class OrgChartManager {
     }
 
     /**
-     * Create a new org chart with a root department
+     * Create a new org chart with a root Board
+     * Le unità di tipo Board possono esistere solo al livello radice
      */
     public void createNewOrgChart(String rootName) {
         rootUnit = new Board(rootName);
@@ -371,6 +372,15 @@ public class OrgChartManager {
 
             OrganizationalUnit loadedRoot = storageStrategy.load(filePath);
             if (loadedRoot != null) {
+                // Log del tipo di radice caricata
+                System.out.println("Caricata unità radice di tipo: " + loadedRoot.getClass().getSimpleName());
+
+                // Per Board, assicuriamo che abbia almeno un ruolo Presidente se non ne ha
+                if (loadedRoot instanceof Board && loadedRoot.getRoles().isEmpty()) {
+                    System.out.println("Aggiunto ruolo Presidente alla Board radice");
+                    loadedRoot.addRole(new Role("Presidente", "Board President"));
+                }
+
                 // Validazione della struttura caricata
                 if (!validateLoadedStructure(loadedRoot)) {
                     ErrorManager.registerError("Il file contiene dati non validi secondo le regole di validazione. Caricamento interrotto.");
@@ -400,17 +410,49 @@ public class OrgChartManager {
      */
     private boolean validateLoadedStructure(OrganizationalUnit root) {
         try {
+            // Aggiungiamo log dettagliati sulla struttura caricata
+            System.out.println("Validazione struttura caricata...");
+            System.out.println("Tipo di unità radice: " + root.getClass().getSimpleName());
+            System.out.println("Nome unità radice: " + root.getName());
+            System.out.println("Numero di ruoli nella radice: " + root.getRoles().size());
+            for (Role role : root.getRoles()) {
+                System.out.println(" - Ruolo: " + role.getName());
+            }
+            System.out.println("Numero di sottounità nella radice: " + root.getSubUnits().size());
+
             // Verifica che i nomi delle sottounità siano unici tra fratelli
+            System.out.println("Verificando nomi unici tra fratelli...");
             validateUniqueNames(root);
+            System.out.println("Verifica nomi completata con successo.");
 
             // Verifica che le relazioni gerarchiche siano valide (gruppi non possono contenere sottounità)
+            System.out.println("Verificando relazioni gerarchiche...");
             validateHierarchy(root);
+            System.out.println("Verifica gerarchie completata con successo.");
 
-            // Verifica che i ruoli siano validi per i tipi di unità
-            validateRoles(root);
+            // Per Board senza ruoli, aggiungiamo ruoli essenziali se necessario
+            if (root instanceof Board && root.getRoles().isEmpty()) {
+                System.out.println("Board senza ruoli rilevata, aggiunta automatica del ruolo Presidente");
+                root.addRole(new Role("Presidente", "Board President"));
+            }
+
+            // Verifica che i ruoli siano validi per i tipi di unità (saltiamo questo passaggio per la Board radice)
+            if (root instanceof Board) {
+                System.out.println("Radice di tipo Board: la validazione dei ruoli sarà meno restrittiva");
+                // Saltare la validazione completa per la radice Board e verificare solo le sottounità
+                for (OrganizationalUnit child : root.getSubUnits()) {
+                    validateRoles(child);
+                }
+            } else {
+                System.out.println("Verificando validità dei ruoli per ogni unità...");
+                validateRoles(root);
+                System.out.println("Verifica ruoli completata con successo.");
+            }
 
             return true;
         } catch (ValidationException e) {
+            System.out.println("ERRORE DI VALIDAZIONE: " + e.getMessage());
+            e.printStackTrace();
             ErrorManager.registerError("Errore di validazione: " + e.getMessage());
             return false;
         }
@@ -457,14 +499,39 @@ public class OrgChartManager {
     }
 
     /**
-     * Verifica che i ruoli siano validi per i tipi di unità
+     * Verifica che i ruoli siano validi per i tipi di unità durante il caricamento
+     * Questa è una versione modificata per il caricamento da file che è più permissiva
+     * poiché non verifica l'unicità dei ruoli tra unità diverse
      */
     private void validateRoles(OrganizationalUnit unit) throws ValidationException {
         if (unit == null) return;
 
         // Verifica che i ruoli siano validi per il tipo di unità
         for (Role role : unit.getRoles()) {
-            OrgChartValidator.validateAddRole(unit, role);
+            // Invece di usare validateAddRole, che controlla anche l'unicità,
+            // controlliamo solo se il tipo di ruolo è valido per questo tipo di unità
+            RoleType roleType = RoleType.findByName(role.getName());
+
+            if (roleType == null) {
+                // Se il roleType non esiste, registriamo un warning ma non blocchiamo il caricamento
+                System.out.println("AVVISO: Il ruolo '" + role.getName() +
+                        "' non è riconosciuto, ma verrà accettato durante il caricamento.");
+            } else if (!roleType.isValidFor(unit)) {
+                // Questo è un errore più grave - il ruolo esiste ma non è valido per questo tipo di unità
+                UnitType unitType;
+                if (unit instanceof Department) {
+                    unitType = UnitType.DEPARTMENT;
+                } else if (unit instanceof Group) {
+                    unitType = UnitType.GROUP;
+                } else if (unit instanceof Board) {
+                    unitType = UnitType.BOARD;
+                } else {
+                    unitType = null; // Should never happen
+                }
+
+                throw new ValidationException("Role '" + roleType.getRoleName() +
+                        "' cannot be assigned to a " + unitType + ".");
+            }
         }
 
         // Verifica ricorsivamente per ogni figlio
