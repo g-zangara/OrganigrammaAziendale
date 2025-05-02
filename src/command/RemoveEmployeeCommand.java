@@ -1,64 +1,68 @@
 package command;
 
-import model.OrganizationalUnit;
 import model.Employee;
+import model.OrganizationalUnit;
+import model.Role;
+import model.ValidationException;
 import controller.OrgChartManager;
-import java.util.HashMap;
-import java.util.Map;
+import util.Logger;
 
 /**
- * Comando per rimuovere un dipendente da un'unità
+ * Command for removing an employee from a role in an organizational unit.
+ * Part of the Command pattern.
  */
 public class RemoveEmployeeCommand implements Command {
-    private OrganizationalUnit unit;
-    private Employee employee;
-    private OrgChartManager manager;
-    private boolean executed = false;
-    private String originalRole; // Memorizza il ruolo originale del dipendente
+    private final OrgChartManager manager;
+    private final Employee employee;
+    private final Role role;
+    private final OrganizationalUnit unit;
+    private boolean executed;
 
     /**
-     * Costruttore
-     * @param unit L'unità da cui rimuovere il dipendente
-     * @param employee Il dipendente da rimuovere
+     * Constructor
+     * @param manager The OrgChartManager
+     * @param employee The employee to remove
+     * @param role The role to remove the employee from
+     * @param unit The organizational unit
      */
-    public RemoveEmployeeCommand(OrganizationalUnit unit, Employee employee) {
-        this.unit = unit;
+    public RemoveEmployeeCommand(OrgChartManager manager, Employee employee, Role role, OrganizationalUnit unit) {
+        this.manager = manager;
         this.employee = employee;
-        this.manager = OrgChartManager.getInstance();
-
-        // Salva il ruolo originale per ripristinarlo durante l'undo
-        //this.originalRole = unit.getEmployeeRole(employee);
+        this.role = role;
+        this.unit = unit;
+        this.executed = false;
     }
 
     @Override
     public boolean execute() {
-        if (executed) {
-            return false;
+        if (!executed) {
+            boolean result = manager.removeEmployeeFromRoleDirectly(employee, role, unit);
+            executed = result;
+            return result;
         }
-
-        manager.removeEmployeeDirectly(unit, employee);
-        executed = true;
-        return true;
+        return false;
     }
 
     @Override
     public boolean undo() {
-        if (!executed) {
-            return false;
+        if (executed) {
+            try {
+                boolean result = manager.assignEmployeeToRoleDirectly(employee, role, unit);
+                if (result) {
+                    executed = false;
+                    return true;
+                }
+                return false;
+            } catch (Exception e) {
+                Logger.logError("Execution failed during RemoveEmployeeCommand undo: " + e.getMessage(), "RemoveEmployeeCommand");
+                return false;
+            }
         }
-
-        boolean result = manager.addEmployeeDirectly(unit, employee);
-        if (result && originalRole != null && !originalRole.isEmpty()) {
-            // Ripristina il ruolo originale
-            manager.assignRoleDirectly(unit, employee, originalRole);
-        }
-
-        executed = false;
-        return result;
+        return false;
     }
 
     @Override
     public String getDescription() {
-        return "Rimozione dipendente '" + employee.getName() + "' da '" + unit.getName() + "'";
+        return "Remove '" + employee.getName() + "' from role '" + role.getName() + "' in '" + unit.getName() + "'";
     }
 }

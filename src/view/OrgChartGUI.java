@@ -581,76 +581,59 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer, Com
             // Usa la Factory per creare il tipo di unità appropriato
             OrganizationalUnit newUnit = UnitFactory.createUnit(typeInEnglish, name);
 
-            try {
-                // Crea un comando per l'operazione
-                Command addUnitCommand = new AddUnitCommand(parentUnit, newUnit);
+            // Crea un comando per l'operazione
+            Command addUnitCommand = new AddUnitCommand(parentUnit, newUnit);
 
-                // Esegue il comando tramite il CommandManager per supportare undo/redo
-                boolean added = commandManager.executeCommand(addUnitCommand);
+            // Esegue il comando tramite il CommandManager per supportare undo/redo
+            boolean added = commandManager.executeCommand(addUnitCommand);
 
-                if (added) {
-                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                    String successMessage = "Unità '" + name + "' (" + type + ") aggiunta a '" +
-                            parentUnit.getName() + "' (" + parentType + ").";
+            if (added) {
+                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                String successMessage = "Unità '" + name + "' (" + type + ") aggiunta a '" +
+                        parentUnit.getName() + "' (" + parentType + ").";
 
-                    // Registra il successo nel logger
-                    util.Logger.logInfo(successMessage, "Operazione Completata");
+                // Registra il successo nel logger
+                util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                    // Mostra un messaggio di conferma all'utente
-                    JOptionPane.showMessageDialog(this,
-                            successMessage,
-                            "Unità Aggiunta",
-                            JOptionPane.INFORMATION_MESSAGE);
+                // Mostra un messaggio di conferma all'utente
+                JOptionPane.showMessageDialog(this,
+                        successMessage,
+                        "Unità Aggiunta",
+                        JOptionPane.INFORMATION_MESSAGE);
 
-                    // Chiudi la finestra di dialogo
-                    dialog.dispose();
-                } else {
-                    // L'esecuzione del comando è fallita
-                    JOptionPane.showMessageDialog(this,
-                            "Non è stato possibile aggiungere l'unità.",
-                            "Errore", JOptionPane.ERROR_MESSAGE);
-                }
+                // Chiudi la finestra di dialogo
+                dialog.dispose();
+            } else {
+                // L'esecuzione del comando è fallita
+                JOptionPane.showMessageDialog(this,
+                        "Non è stato possibile aggiungere l'unità.",
+                        "Errore", JOptionPane.ERROR_MESSAGE);
+            }
 
-                // Aggiorna l'albero e seleziona il nuovo nodo
-                SwingUtilities.invokeLater(() -> {
-                    // Trova il nodo del genitore nell'albero
-                    DefaultMutableTreeNode parentNode = unitToNodeMap.get(parentUnit);
-                    if (parentNode != null) {
-                        // Cerca il nodo della nuova unità tra i figli
-                        for (int i = 0; i < parentNode.getChildCount(); i++) {
-                            DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) parentNode.getChildAt(i);
-                            Object userObject = childNode.getUserObject();
-                            if (userObject instanceof OrganizationalUnit) {
-                                OrganizationalUnit unit = (OrganizationalUnit) userObject;
-                                if (unit.equals(newUnit)) {
-                                    // Seleziona questo nodo
-                                    TreeNode[] pathToNode = treeModel.getPathToRoot(childNode);
-                                    TreePath path = new TreePath(pathToNode);
-                                    orgTree.setSelectionPath(path);
-                                    orgTree.scrollPathToVisible(path);
-                                    showUnitDetails(unit);
-                                    break;
-                                }
+            // Aggiorna l'albero e seleziona il nuovo nodo
+            SwingUtilities.invokeLater(() -> {
+                // Trova il nodo del genitore nell'albero
+                DefaultMutableTreeNode parentNode = unitToNodeMap.get(parentUnit);
+                if (parentNode != null) {
+                    // Cerca il nodo della nuova unità tra i figli
+                    for (int i = 0; i < parentNode.getChildCount(); i++) {
+                        DefaultMutableTreeNode childNode = (DefaultMutableTreeNode) parentNode.getChildAt(i);
+                        Object userObject = childNode.getUserObject();
+                        if (userObject instanceof OrganizationalUnit) {
+                            OrganizationalUnit unit = (OrganizationalUnit) userObject;
+                            if (unit.equals(newUnit)) {
+                                // Seleziona questo nodo
+                                TreeNode[] pathToNode = treeModel.getPathToRoot(childNode);
+                                TreePath path = new TreePath(pathToNode);
+                                orgTree.setSelectionPath(path);
+                                orgTree.scrollPathToVisible(path);
+                                showUnitDetails(unit);
+                                break;
                             }
                         }
                     }
-                });
-            } catch (model.ValidationException ex) {
-                // Gestione dell'errore di validazione
-
-                // Crea un messaggio di errore dettagliato
-                String errorMsg = "Errore nell'aggiunta dell'unità '" + name + "' a '" +
-                        parentUnit.getName() + "' (" + parentType + "): " + ex.getMessage();
-
-                // Registra l'errore nel logger e nell'ErrorManager
-                util.Logger.logError(errorMsg, "Errore di Validazione", true);
-
-                // Mostra un messaggio di errore all'utente
-                JOptionPane.showMessageDialog(dialog,
-                        "Errore di validazione: " + ex.getMessage(),
-                        "Errore Validazione",
-                        JOptionPane.ERROR_MESSAGE);
-            }
+                }
+            });
         });
         buttonPanel.add(createButton);
 
@@ -899,54 +882,37 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer, Com
             // Crea il nuovo ruolo
             Role newRole = new Role(roleName, description);
 
-            try {
-                // Crea un comando per l'operazione
-                Command addRoleCommand = new AddRoleCommand(unit, newRole);
+            // Crea un comando per l'operazione
+            Command addRoleCommand = new AddRoleCommand(unit, newRole);
 
-                // Esegue il comando tramite il CommandManager per supportare undo/redo
-                boolean added = commandManager.executeCommand(addRoleCommand);
+            // Esegue il comando tramite il CommandManager per supportare undo/redo
+            boolean added = commandManager.executeCommand(addRoleCommand);
 
-                if (added) {
-                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                    String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" + unit.getName() + "' (" + unitType + ").";
+            if (added) {
+                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" + unit.getName() + "' (" + unitType + ").";
 
-                    // Registra il successo nel logger
-                    util.Logger.logInfo(successMessage, "Operazione Completata");
+                // Registra il successo nel logger
+                util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                    // Mostra un messaggio di conferma all'utente
-                    JOptionPane.showMessageDialog(this,
-                            successMessage,
-                            "Ruolo Aggiunto",
-                            JOptionPane.INFORMATION_MESSAGE);
+                // Mostra un messaggio di conferma all'utente
+                JOptionPane.showMessageDialog(this,
+                        successMessage,
+                        "Ruolo Aggiunto",
+                        JOptionPane.INFORMATION_MESSAGE);
 
-                    // Chiudi la finestra di dialogo
-                    dialog.dispose();
+                // Chiudi la finestra di dialogo
+                dialog.dispose();
 
-                    // Aggiorna la visualizzazione dell'albero
-                    update();
+                // Aggiorna la visualizzazione dell'albero
+                update();
 
-                    // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
-                    selectAndShowUnit(unit);
-                } else {
-                    JOptionPane.showMessageDialog(this,
-                            "Non è stato possibile aggiungere il ruolo.",
-                            "Errore", JOptionPane.ERROR_MESSAGE);
-                }
-            } catch (model.ValidationException ex) {
-                // Gestione dell'errore di validazione
-
-                // Crea un messaggio di errore dettagliato
-                String errorMsg = "Errore nell'aggiunta del ruolo '" + roleName + "' all'unità '" +
-                        unit.getName() + "' (" + unitType + "): " + ex.getMessage();
-
-                // Registra l'errore nel logger e nell'ErrorManager
-                util.Logger.logError(errorMsg, "Errore di Validazione", true);
-
-                // Mostra un messaggio di errore all'utente
-                JOptionPane.showMessageDialog(dialog,
-                        "Errore di validazione: " + ex.getMessage(),
-                        "Errore Validazione",
-                        JOptionPane.ERROR_MESSAGE);
+                // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
+                selectAndShowUnit(unit);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Non è stato possibile aggiungere il ruolo.",
+                        "Errore", JOptionPane.ERROR_MESSAGE);
             }
         });
         buttonPanel.add(createButton);
@@ -1080,56 +1046,45 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer, Com
             // Crea il nuovo dipendente
             Employee newEmployee = new Employee(name);
 
-            try {
-                // Crea un comando per l'operazione
-                Command assignEmployeeCommand = new AssignRoleCommand(unit, selectedRole, newEmployee);
+            // Crea un comando per l'operazione
+            Command assignEmployeeCommand = new AssignEmployeeCommand(manager, newEmployee, selectedRole, unit);
 
-                // Esegue il comando tramite il CommandManager per supportare undo/redo
-                boolean added = commandManager.executeCommand(assignEmployeeCommand);
+            // Aggiunta di log per il debug
+            System.out.println("Debug: Creazione dipendente '" + newEmployee.getName() + "' con ruolo '" +
+                    selectedRole.getName() + "' nell'unità '" + unit.getName() + "'");
 
-                if (added) {
-                    // Crea il messaggio di successo
-                    String successMessage = "Dipendente '" + name + "' aggiunto e assegnato al ruolo '" +
-                            selectedRole.getName() + "' nell'unità '" + unit.getName() + "' (" + unitType + ").";
+            // Esegue il comando tramite il CommandManager per supportare undo/redo
+            boolean added = commandManager.executeCommand(assignEmployeeCommand);
 
-                    // Registra il successo nel logger
-                    util.Logger.logInfo(successMessage, "Operazione Completata");
+            // Stampa risultato per debugging
+            System.out.println("Debug: Risultato dell'aggiunta: " + (added ? "SUCCESS" : "FAILURE"));
 
-                    // Mostra un messaggio di conferma all'utente
-                    JOptionPane.showMessageDialog(this,
-                            successMessage,
-                            "Dipendente Aggiunto",
-                            JOptionPane.INFORMATION_MESSAGE);
+            if (added) {
+                // Crea il messaggio di successo
+                String successMessage = "Dipendente '" + name + "' aggiunto e assegnato al ruolo '" +
+                        selectedRole.getName() + "' nell'unità '" + unit.getName() + "' (" + unitType + ").";
 
-                    // Chiudi la finestra di dialogo
-                    dialog.dispose();
+                // Registra il successo nel logger
+                util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                    // Aggiorna la visualizzazione dell'albero
-                    update();
+                // Mostra un messaggio di conferma all'utente
+                JOptionPane.showMessageDialog(this,
+                        successMessage,
+                        "Dipendente Aggiunto",
+                        JOptionPane.INFORMATION_MESSAGE);
 
-                    // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
-                    selectAndShowUnit(unit);
-                } else {
-                    JOptionPane.showMessageDialog(this,
-                            "Non è stato possibile aggiungere il dipendente.",
-                            "Errore", JOptionPane.ERROR_MESSAGE);
-                }
-            } catch (model.ValidationException ex) {
-                // Gestione dell'errore di validazione
+                // Chiudi la finestra di dialogo
+                dialog.dispose();
 
-                // Crea un messaggio di errore dettagliato
-                String errorMsg = "Errore nell'assegnazione del dipendente '" + name + "' al ruolo '" +
-                        selectedRole.getName() + "' nell'unità '" + unit.getName() + "' (" + unitType + "): " +
-                        ex.getMessage();
+                // Aggiorna la visualizzazione dell'albero
+                update();
 
-                // Registra l'errore nel logger e nell'ErrorManager
-                util.Logger.logError(errorMsg, "Errore di Validazione", true);
-
-                // Mostra un messaggio di errore all'utente
-                JOptionPane.showMessageDialog(dialog,
-                        "Errore di validazione: " + ex.getMessage(),
-                        "Errore Validazione",
-                        JOptionPane.ERROR_MESSAGE);
+                // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
+                selectAndShowUnit(unit);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Non è stato possibile aggiungere il dipendente.",
+                        "Errore", JOptionPane.ERROR_MESSAGE);
             }
         });
         buttonPanel.add(createButton);

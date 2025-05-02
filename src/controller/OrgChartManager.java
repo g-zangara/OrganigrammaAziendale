@@ -5,6 +5,7 @@ import model.*;
 import persistence.*;
 import util.Logger;
 import util.ErrorManager;
+import command.CommandManager;
 import java.util.*;
 
 /**
@@ -16,6 +17,7 @@ public class OrgChartManager {
     private OrganizationalUnit rootUnit;
     private List<Observer> observers = new ArrayList<>();
     private StorageStrategy storageStrategy;
+    private CommandManager commandManager = CommandManager.getInstance();
 
     // Interface for Observer pattern
     public interface Observer {
@@ -71,9 +73,21 @@ public class OrgChartManager {
     /**
      * Create a new org chart with a root Board
      * Le unità di tipo Board possono esistere solo al livello radice
+     * Aggiunge automaticamente un ruolo "Presidente" alla Board
      */
     public void createNewOrgChart(String rootName) {
         rootUnit = new Board(rootName);
+
+        // Aggiungiamo un ruolo predefinito "Presidente" alla board
+        try {
+            Role presidenteRole = new Role("Presidente", "Rappresentante principale dell'organizzazione");
+            presidenteRole.setUnit(rootUnit);
+            rootUnit.addRole(presidenteRole);
+            System.out.println("Ruolo 'Presidente' aggiunto automaticamente alla Board '" + rootName + "'");
+        } catch (Exception e) {
+            System.out.println("Errore nell'aggiunta del ruolo predefinito 'Presidente': " + e.getMessage());
+        }
+
         notifyObservers();
     }
 
@@ -82,6 +96,45 @@ public class OrgChartManager {
      */
     public OrganizationalUnit getRootUnit() {
         return rootUnit;
+    }
+
+    /**
+     * Get the command manager for undo/redo operations
+     */
+    public CommandManager getCommandManager() {
+        return commandManager;
+    }
+
+    /**
+     * Undo the last command
+     * @return true if undo was successful, false otherwise
+     */
+    public boolean undo() {
+        return commandManager.undo();
+    }
+
+    /**
+     * Redo the last undone command
+     * @return true if redo was successful, false otherwise
+     */
+    public boolean redo() {
+        return commandManager.redo();
+    }
+
+    /**
+     * Check if undo is available
+     * @return true if undo is available, false otherwise
+     */
+    public boolean canUndo() {
+        return commandManager.canUndo();
+    }
+
+    /**
+     * Check if redo is available
+     * @return true if redo is available, false otherwise
+     */
+    public boolean canRedo() {
+        return commandManager.canRedo();
     }
 
     /**
@@ -111,6 +164,25 @@ public class OrgChartManager {
 
             // La validazione è passata, aggiungi l'unità
             parent.addSubUnit(newUnit);
+
+            // Aggiungiamo un ruolo predefinito in base al tipo di unità
+            Role defaultRole = null;
+
+            if (newUnit instanceof Board) {
+                defaultRole = new Role("Presidente", "Rappresentante principale dell'organizzazione");
+                System.out.println("Aggiunto ruolo predefinito 'Presidente' alla Board " + newUnit.getName());
+            } else if (newUnit instanceof Department) {
+                defaultRole = new Role("Direttore", "Responsabile del dipartimento");
+                System.out.println("Aggiunto ruolo predefinito 'Direttore' al Dipartimento " + newUnit.getName());
+            } else if (newUnit instanceof Group) {
+                defaultRole = new Role("Coordinatore", "Coordinatore del gruppo di lavoro");
+                System.out.println("Aggiunto ruolo predefinito 'Coordinatore' al Gruppo " + newUnit.getName());
+            }
+
+            if (defaultRole != null) {
+                defaultRole.setUnit(newUnit);
+                newUnit.addRole(defaultRole);
+            }
 
             // Registra l'operazione per debugging
             util.Logger.logDebug("Unità '" + newUnit.getName() + "' aggiunta all'unità '" + parent.getName() + "'", "Operazione Completata");
@@ -238,28 +310,17 @@ public class OrgChartManager {
             // Effettua la validazione prima di procedere
             OrgChartValidator.validateAssignEmployeeToRole(employee, role, unit);
 
-            // Imposta l'unità per il ruolo se non è già impostata
-            if (role.getUnit() == null) {
-                role.setUnit(unit);
+            // Crea e esegui il comando utilizzando il pattern Command
+            command.AssignEmployeeCommand cmd = new command.AssignEmployeeCommand(this, employee, role, unit);
+            boolean result = commandManager.executeCommand(cmd);
+
+            if (result) {
+                // Registra l'operazione per debugging
+                util.Logger.logDebug("Dipendente '" + employee.getName() + "' assegnato al ruolo '" +
+                        role.getName() + "' nell'unità '" + unit.getName() + "'", "Operazione Completata");
             }
 
-            // Aggiungi il ruolo al dipendente
-            employee.addRole(role);
-            employee.addUnit(unit);
-
-            // Aggiungi il dipendente alla lista dei dipendenti dell'unità
-            List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
-            if (!employees.contains(employee)) {
-                employees.add(employee);
-            }
-
-            // Registra l'operazione per debugging
-            util.Logger.logDebug("Dipendente '" + employee.getName() + "' assegnato al ruolo '" +
-                    role.getName() + "' nell'unità '" + unit.getName() + "'", "Operazione Completata");
-
-            // Notifica gli osservatori del cambiamento
-            notifyObservers();
-            return true;
+            return result;
         } catch (ValidationException ex) {
             // Rilanciamo l'eccezione per gestirla nella UI
             util.Logger.logError("Errore nell'assegnazione del dipendente: " + ex.getMessage(), "Errore di Validazione");
@@ -272,30 +333,9 @@ public class OrgChartManager {
      */
     public void removeEmployeeFromRole(Employee employee, Role role, OrganizationalUnit unit) {
         if (employee != null) {
-            // Remove the role from the employee
-            employee.removeRole(role);
-
-            // Check if the employee still has other roles in this unit
-            boolean hasOtherRolesInUnit = false;
-            for (Role r : employee.getRoles()) {
-                if (r.getUnit() == unit) {
-                    hasOtherRolesInUnit = true;
-                    break;
-                }
-            }
-
-            // If no other roles in this unit, remove the unit from employee
-            if (!hasOtherRolesInUnit) {
-                employee.removeUnit(unit);
-
-                // Also remove from our employee tracking map
-                List<Employee> employees = employeesByUnit.get(unit);
-                if (employees != null) {
-                    employees.remove(employee);
-                }
-            }
-
-            notifyObservers();
+            // Utilizza il pattern Command per supportare undo/redo
+            command.RemoveEmployeeCommand cmd = new command.RemoveEmployeeCommand(this, employee, role, unit);
+            commandManager.executeCommand(cmd);
         }
     }
 
@@ -308,18 +348,40 @@ public class OrgChartManager {
      */
     public void changeEmployeeRole(Employee employee, Role oldRole, Role newRole, OrganizationalUnit unit) {
         if (employee != null && oldRole != null && newRole != null && unit != null) {
-            // Rimuovi il vecchio ruolo
-            employee.removeRole(oldRole);
+            // Utilizza il pattern Command per supportare undo/redo
+            command.ChangeEmployeeRoleCommand cmd = new command.ChangeEmployeeRoleCommand(this, employee, oldRole, newRole, unit);
+            commandManager.executeCommand(cmd);
+        }
+    }
 
-            // Aggiungi il nuovo ruolo
-            employee.addRole(newRole);
+    /**
+     * Implementazione diretta del cambio ruolo (usata dal Command)
+     * @param employee Il dipendente a cui cambiare ruolo
+     * @param oldRole Il ruolo attuale
+     * @param newRole Il nuovo ruolo
+     * @param unit L'unità organizzativa
+     * @return true se l'operazione è riuscita, false altrimenti
+     */
+    public boolean changeEmployeeRoleDirectly(Employee employee, Role oldRole, Role newRole, OrganizationalUnit unit) {
+        try {
+            if (employee != null && oldRole != null && newRole != null && unit != null) {
+                // Rimuovi il vecchio ruolo
+                employee.removeRole(oldRole);
 
-            // Se il nuovo ruolo non è ancora associato all'unità, associalo
-            if (newRole.getUnit() == null) {
-                newRole.setUnit(unit);
+                // Aggiungi il nuovo ruolo
+                employee.addRole(newRole);
+
+                // Se il nuovo ruolo non è ancora associato all'unità, associalo
+                if (newRole.getUnit() == null) {
+                    newRole.setUnit(unit);
+                }
+
+                notifyObservers();
+                return true;
             }
-
-            notifyObservers();
+            return false;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -385,11 +447,8 @@ public class OrgChartManager {
                     return false;
                 }
 
-                // Per Board, assicuriamo che abbia almeno un ruolo Presidente se non ne ha
-                if (loadedRoot.getRoles().isEmpty()) {
-                    System.out.println("Aggiunto ruolo Presidente alla Board radice");
-                    loadedRoot.addRole(new Role("Presidente", "Board President"));
-                }
+                // Non aggiungiamo più automaticamente il ruolo di Presidente alla Board
+                // Rispettiamo i dati esattamente come caricati dal file
 
                 // Validazione della struttura caricata
                 if (!validateLoadedStructure(loadedRoot)) {
@@ -440,11 +499,8 @@ public class OrgChartManager {
             validateHierarchy(root);
             System.out.println("Verifica gerarchie completata con successo.");
 
-            // Per Board senza ruoli, aggiungiamo ruoli essenziali se necessario
-            if (root instanceof Board && root.getRoles().isEmpty()) {
-                System.out.println("Board senza ruoli rilevata, aggiunta automatica del ruolo Presidente");
-                root.addRole(new Role("Presidente", "Board President"));
-            }
+            // Non aggiungiamo più automaticamente il ruolo Presidente alla Board
+            // Verificheremo solo che la struttura rispetti le regole gerarchiche
 
             // Verifica che i ruoli siano validi per i tipi di unità (saltiamo questo passaggio per la Board radice)
             if (root instanceof Board) {
@@ -620,10 +676,34 @@ public class OrgChartManager {
             OrgChartValidator.validateAddUnit(parent, unit);
 
             parent.addSubUnit(unit);
+
+            // Aggiungiamo un ruolo predefinito in base al tipo di unità
+            Role defaultRole = null;
+
+            if (unit instanceof Board) {
+                defaultRole = new Role("Presidente", "Rappresentante principale dell'organizzazione");
+                System.out.println("Aggiunto ruolo predefinito 'Presidente' alla Board " + unit.getName());
+            } else if (unit instanceof Department) {
+                defaultRole = new Role("Direttore", "Responsabile del dipartimento");
+                System.out.println("Aggiunto ruolo predefinito 'Direttore' al Dipartimento " + unit.getName());
+            } else if (unit instanceof Group) {
+                defaultRole = new Role("Coordinatore", "Coordinatore del gruppo di lavoro");
+                System.out.println("Aggiunto ruolo predefinito 'Coordinatore' al Gruppo " + unit.getName());
+            }
+
+            if (defaultRole != null) {
+                defaultRole.setUnit(unit);
+                unit.addRole(defaultRole);
+            }
+
             notifyObservers();
             return true;
         } catch (ValidationException ex) {
             util.Logger.logError("Validazione fallita in addUnitDirectly: " + ex.getMessage(), "Operazione Command");
+            return false;
+        } catch (Exception e) {
+            util.Logger.logError("Errore in addUnitDirectly: " + e.getMessage(), "Errore");
+            e.printStackTrace();
             return false;
         }
     }
@@ -828,10 +908,20 @@ public class OrgChartManager {
     public boolean assignEmployeeToRoleDirectly(Employee employee, Role role, OrganizationalUnit unit) {
         try {
             role.addEmployee(employee);
+            employee.addRole(role);
             employee.addUnit(unit);
+
+            // Importante: aggiungi l'impiegato alla mappa employeesByUnit
+            List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
+            if (!employees.contains(employee)) {
+                employees.add(employee);
+            }
+
             notifyObservers();
             return true;
         } catch (Exception e) {
+            System.out.println("Errore in assignEmployeeToRoleDirectly: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
@@ -846,7 +936,12 @@ public class OrgChartManager {
      */
     public boolean removeEmployeeFromRoleDirectly(Employee employee, Role role, OrganizationalUnit unit) {
         try {
-            role.removeEmployee(employee);
+            System.out.println("Debug removeEmployeeFromRoleDirectly: Tentativo di rimuovere " + employee.getName() +
+                    " da " + role.getName() + " nell'unità " + unit.getName());
+
+            // Rimuovi il dipendente dal ruolo
+            boolean removed = role.removeEmployee(employee);
+
             // Check if employee still has roles in this unit
             boolean hasRolesInUnit = false;
             for (Role r : employee.getRoles()) {
@@ -855,12 +950,31 @@ public class OrgChartManager {
                     break;
                 }
             }
+
+            // Se il dipendente non ha più ruoli in questa unità, rimuovilo anche dalla mappa
             if (!hasRolesInUnit) {
+                System.out.println("Debug removeEmployeeFromRoleDirectly: Il dipendente non ha più ruoli nell'unità, rimuovo dall'unità e dalla mappa");
                 employee.removeUnit(unit);
+
+                // Rimuovere il dipendente anche dalla mappa employeesByUnit
+                List<Employee> employees = employeesByUnit.get(unit);
+                if (employees != null) {
+                    employees.remove(employee);
+                    System.out.println("Debug removeEmployeeFromRoleDirectly: Dipendente rimosso dalla mappa");
+                    if (employees.isEmpty()) {
+                        // Se l'unità non ha più dipendenti, rimuoviamo la chiave dalla mappa
+                        employeesByUnit.remove(unit);
+                        System.out.println("Debug removeEmployeeFromRoleDirectly: Rimossa unità dalla mappa perché non ha più dipendenti");
+                    }
+                }
             }
+
             notifyObservers();
+            System.out.println("Debug removeEmployeeFromRoleDirectly: Rimozione completata con successo");
             return true;
         } catch (Exception e) {
+            System.out.println("Debug removeEmployeeFromRoleDirectly: Errore nella rimozione: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }

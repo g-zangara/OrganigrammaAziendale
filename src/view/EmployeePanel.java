@@ -137,7 +137,14 @@ public class EmployeePanel extends JPanel {
                         return;
                     }
 
-                    manager.assignEmployeeToRole(currentEmployee, selectedRole, selectedUnit);
+                    try {
+                        manager.assignEmployeeToRole(currentEmployee, selectedRole, selectedUnit);
+                    } catch (ValidationException ex) {
+                        JOptionPane.showMessageDialog(dialog,
+                                "Error assigning employee: " + ex.getMessage(), "Validation Error",
+                                JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
 
                     dialog.dispose();
                 });

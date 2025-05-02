@@ -13,6 +13,10 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.lang.reflect.Field;
 
 /**
  * Panel for displaying and managing organizational unit details.
@@ -140,14 +144,40 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
                 // Creiamo sempre un nuovo employee con ID unico, indipendentemente dal nome
                 Employee newEmployee = new Employee(name);
                 // Il nuovo ID unico garantisce che possano esistere più dipendenti con lo stesso nome
-                manager.assignEmployeeToRole(newEmployee, selectedRole, currentUnit);
 
-                // Show confirmation
-                JOptionPane.showMessageDialog(this,
-                        "Employee '" + name + "' has been added and assigned to role '" +
-                                selectedRole.getName() + "' in unit '" + currentUnit.getName() + "'.",
-                        "Employee Added",
-                        JOptionPane.INFORMATION_MESSAGE);
+                System.out.println("Debug: Tentativo di aggiungere dipendente '" + name +
+                        "' al ruolo '" + selectedRole.getName() +
+                        "' nell'unità '" + currentUnit.getName() + "'");
+
+                try {
+                    boolean success = manager.assignEmployeeToRole(newEmployee, selectedRole, currentUnit);
+
+                    System.out.println("Debug: Risultato aggiunta dipendente: " + (success ? "SUCCESS" : "FAILURE"));
+                    System.out.println("Debug: Numero di dipendenti nell'unità dopo aggiunta: " +
+                            manager.getEmployeesInUnit(currentUnit).size());
+
+                    // Stampa ruoli per debug
+                    for (Role r : currentUnit.getRoles()) {
+                        System.out.println("Debug: Ruolo '" + r.getName() + "' ha " +
+                                r.getEmployees().size() + " dipendenti");
+                        for (Employee empDebug : r.getEmployees()) {
+                            System.out.println("Debug: - Dipendente: " + empDebug.getName() + " (ID: " + empDebug.getUniqueId() + ")");
+                        }
+                    }
+
+                    // Show confirmation
+                    JOptionPane.showMessageDialog(this,
+                            "Employee '" + name + "' has been added and assigned to role '" +
+                                    selectedRole.getName() + "' in unit '" + currentUnit.getName() + "'.",
+                            "Employee Added",
+                            JOptionPane.INFORMATION_MESSAGE);
+                } catch (ValidationException ex) {
+                    System.out.println("Debug: Errore nell'aggiunta del dipendente: " + ex.getMessage());
+                    JOptionPane.showMessageDialog(this,
+                            "Error assigning employee: " + ex.getMessage(),
+                            "Validation Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
 
                 dialog.dispose();
 
@@ -206,6 +236,25 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
 
         nameLabel.setText(unit.getName());
         typeLabel.setText(unit.getType());
+
+        System.out.println("Debug displayUnit: Mostrando unità " + unit.getName() + " con " +
+                (unit.getRoles() != null ? unit.getRoles().size() : 0) + " ruoli");
+
+        // Stampa info su ruoli
+        for (Role r : unit.getRoles()) {
+            System.out.println("Debug displayUnit: Ruolo " + r.getName() + " ha " +
+                    (r.getEmployees() != null ? r.getEmployees().size() : 0) + " dipendenti");
+            for (Employee emp : r.getEmployees()) {
+                System.out.println("Debug displayUnit: - Dipendente " + emp.getName() + " (ID: " + emp.getUniqueId() + ")");
+            }
+        }
+
+        // Stampa info sul mapping di dipendenti
+        List<Employee> employees = manager.getEmployeesInUnit(unit);
+        System.out.println("Debug displayUnit: Trovati " + employees.size() + " dipendenti nel mapping per l'unità");
+        for (Employee emp : employees) {
+            System.out.println("Debug displayUnit: - Dipendente mappato: " + emp.getName() + " (ID: " + emp.getUniqueId() + ")");
+        }
 
         updateRoles();
         updateEmployees();
@@ -318,52 +367,35 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
                 // Crea il nuovo ruolo
                 Role newRole = new Role(roleName, description);
 
-                try {
-                    // Creiamo un comando per l'operazione
-                    Command addRoleCommand = new command.AddRoleCommand(currentUnit, newRole);
+                // Creiamo un comando per l'operazione
+                Command addRoleCommand = new command.AddRoleCommand(currentUnit, newRole);
 
-                    // Otteniamo il CommandManager dalla finestra principale
-                    CommandManager commandManager = ((OrgChartGUI) SwingUtilities.getWindowAncestor(this)).getCommandManager();
+                // Otteniamo il CommandManager dalla finestra principale
+                CommandManager commandManager = ((OrgChartGUI) SwingUtilities.getWindowAncestor(this)).getCommandManager();
 
-                    // Eseguiamo il comando tramite il CommandManager per supportare undo/redo
-                    boolean added = commandManager.executeCommand(addRoleCommand);
+                // Eseguiamo il comando tramite il CommandManager per supportare undo/redo
+                boolean added = commandManager.executeCommand(addRoleCommand);
 
-                    if (added) {
-                        // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                        String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" +
-                                currentUnit.getName() + "' (" + unitType + ").";
+                if (added) {
+                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                    String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" +
+                            currentUnit.getName() + "' (" + unitType + ").";
 
-                        // Registra il successo nel logger
-                        util.Logger.logInfo(successMessage, "Operazione Completata");
+                    // Registra il successo nel logger
+                    util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                        // Mostra un messaggio di conferma all'utente
-                        JOptionPane.showMessageDialog(dialog.getOwner(),
-                                successMessage,
-                                "Ruolo Aggiunto",
-                                JOptionPane.INFORMATION_MESSAGE);
+                    // Mostra un messaggio di conferma all'utente
+                    JOptionPane.showMessageDialog(dialog.getOwner(),
+                            successMessage,
+                            "Ruolo Aggiunto",
+                            JOptionPane.INFORMATION_MESSAGE);
 
-                        // Chiudi la finestra di dialogo
-                        dialog.dispose();
-                    } else {
-                        JOptionPane.showMessageDialog(dialog,
-                                "Non è stato possibile aggiungere il ruolo.",
-                                "Errore", JOptionPane.ERROR_MESSAGE);
-                    }
-                } catch (model.ValidationException ex) {
-                    // Gestione dell'errore di validazione
-
-                    // Crea un messaggio di errore dettagliato
-                    String errorMsg = "Errore nell'aggiunta del ruolo '" + roleName + "' all'unità '" +
-                            currentUnit.getName() + "' (" + unitType + "): " + ex.getMessage();
-
-                    // Registra l'errore nel logger e nell'ErrorManager
-                    util.Logger.logError(errorMsg, "Errore di Validazione", true);
-
-                    // Mostra un messaggio di errore all'utente
+                    // Chiudi la finestra di dialogo
+                    dialog.dispose();
+                } else {
                     JOptionPane.showMessageDialog(dialog,
-                            "Errore di validazione: " + ex.getMessage(),
-                            "Errore Validazione",
-                            JOptionPane.ERROR_MESSAGE);
+                            "Non è stato possibile aggiungere il ruolo.",
+                            "Errore", JOptionPane.ERROR_MESSAGE);
                 }
             });
             buttonPanel.add(createButton);
@@ -496,31 +528,62 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
         // Puliamo la lista di mappature
         employeeRoleMappings.clear();
 
-        // Otteniamo la lista dei dipendenti in questa unità
-        List<Employee> employees = manager.getEmployeesInUnit(currentUnit);
-
         // Debug: stampiamo informazioni sui dipendenti trovati
         System.out.println("*** Aggiornamento tabella employees ***");
-        System.out.println("Numero di dipendenti trovati nell'unità: " + employees.size());
 
-        for (Employee employee : employees) {
-            for (Role role : employee.getRoles()) {
-                if (role.getUnit() == currentUnit) {
-                    // Debug: stampiamo informazioni sulla riga che stiamo aggiungendo
-                    System.out.println("Aggiunta riga: Dipendente=" + employee.getName() + ", Ruolo=" + role.getName());
+        // Otteniamo la lista dei dipendenti in questa unità tramite la mappa in OrgChartManager
+        List<Employee> employeesFromMap = manager.getEmployeesInUnit(currentUnit);
+        System.out.println("Numero di dipendenti trovati nella mappa: " + employeesFromMap.size());
 
-                    // Aggiungiamo la riga alla tabella con il pulsante Change Role e Remove
-                    Object[] rowData = {
-                            employee.getName(),
-                            role.getName(),
-                            "Change Role",
-                            "Remove"
-                    };
-                    employeesTableModel.addRow(rowData);
+        // Verifica lo stato della mappa di dipendenti
+        Map<OrganizationalUnit, List<Employee>> empMap = getEmployeesMapForDebug();
+        System.out.println("Numero di mappature: " + (empMap != null ? empMap.size() : 0));
 
-                    // Salviamo la mappatura tra riga e oggetti Employee/Role
-                    employeeRoleMappings.add(new EmployeeRoleMapping(employee, role));
+        // Stampa i ruoli disponibili nell'unità corrente
+        System.out.println("Ruoli nell'unità: " + currentUnit.getRoles().size());
+
+        // Raccogliamo tutti i dipendenti dai ruoli dell'unità corrente
+        Set<Employee> allEmployeesInUnit = new HashSet<>();
+
+        // Iteriamo per ogni ruolo nell'unità
+        for (Role r : currentUnit.getRoles()) {
+            System.out.println(" - Ruolo: " + r.getName() + ", Dipendenti: " + r.getEmployees().size());
+
+            // Per ogni dipendente nel ruolo
+            for (Employee employee : r.getEmployees()) {
+                System.out.println("   * Dipendente: " + employee.getName() + " (ID: " + employee.getUniqueId() + ")");
+
+                // Aggiungiamo il dipendente al set
+                allEmployeesInUnit.add(employee);
+
+                // Debug: stampiamo informazioni sulla riga che stiamo aggiungendo
+                System.out.println("Aggiunta riga: Dipendente=" + employee.getName() + ", Ruolo=" + r.getName());
+
+                // Aggiungiamo la riga alla tabella con il pulsante Change Role e Remove
+                Object[] rowData = {
+                        employee.getName(),
+                        r.getName(),
+                        "Change Role",
+                        "Remove"
+                };
+                employeesTableModel.addRow(rowData);
+
+                // Salviamo la mappatura tra riga e oggetti Employee/Role
+                employeeRoleMappings.add(new EmployeeRoleMapping(employee, r));
+
+                // Assicuriamoci che il dipendente sia nella mappa in OrgChartManager
+                if (!employeesFromMap.contains(employee)) {
+                    System.out.println("   # Attenzione: Dipendente " + employee.getName() +
+                            " trovato nel ruolo ma non nella mappa di OrgChartManager!");
                 }
+            }
+        }
+
+        // Verifichiamo se ci sono dipendenti nella mappa ma non nei ruoli
+        for (Employee employee : employeesFromMap) {
+            if (!allEmployeesInUnit.contains(employee)) {
+                System.out.println("   # Attenzione: Dipendente " + employee.getName() +
+                        " trovato nella mappa ma non in nessun ruolo dell'unità!");
             }
         }
 
@@ -544,6 +607,22 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
     private void clearEmployees() {
         while (employeesTableModel.getRowCount() > 0) {
             employeesTableModel.removeRow(0);
+        }
+    }
+
+    /**
+     * Ottiene la mappa degli impiegati solo per debug
+     * @return Mappa degli impiegati per unità
+     */
+    private Map<OrganizationalUnit, List<Employee>> getEmployeesMapForDebug() {
+        try {
+            // Utilizziamo reflection per accedere alla mappa privata in OrgChartManager
+            Field employeesByUnitField = OrgChartManager.class.getDeclaredField("employeesByUnit");
+            employeesByUnitField.setAccessible(true);
+            return (Map<OrganizationalUnit, List<Employee>>) employeesByUnitField.get(manager);
+        } catch (Exception e) {
+            System.out.println("Errore nell'accesso a employeesByUnit: " + e.getMessage());
+            return null;
         }
     }
 
