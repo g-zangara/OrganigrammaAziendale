@@ -490,8 +490,9 @@ public class OrgChartManager {
     }
 
     /**
-     * Verifica che le relazioni gerarchiche siano valide
-     * (i gruppi non possono contenere sottounità)
+     * Verifica che le relazioni gerarchiche siano valide:
+     * 1. I gruppi non possono contenere sottounità
+     * 2. Le unità di tipo Board possono esistere solo come radice
      */
     private void validateHierarchy(OrganizationalUnit unit) throws ValidationException {
         if (unit == null) return;
@@ -500,6 +501,14 @@ public class OrgChartManager {
         if (unit instanceof Group && !unit.getSubUnits().isEmpty()) {
             throw new ValidationException("Il gruppo '" + unit.getName() +
                     "' non può contenere sottounità");
+        }
+
+        // Verifica che non ci siano Board come sottounità
+        for (OrganizationalUnit child : unit.getSubUnits()) {
+            if (child instanceof Board) {
+                throw new ValidationException("L'unità di tipo Board '" + child.getName() +
+                        "' può esistere solo come radice dell'organigramma");
+            }
         }
 
         // Verifica ricorsivamente per ogni figlio

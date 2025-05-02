@@ -197,6 +197,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer, Com
                     return;
                 }
 
+                // Reset del CommandManager quando si carica un nuovo file
+                commandManager.clearHistory();
+
                 boolean success = manager.loadOrgChart(filePath);
                 if (success) {
                     // Aggiorna l'albero e seleziona l'unità radice
