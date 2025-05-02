@@ -590,4 +590,269 @@ public class OrgChartManager {
             rebuildEmployeeMappingRecursive(child);
         }
     }
+
+    // ----------- METODI PER IMPLEMENTAZIONE PATTERN COMMAND ----------- //
+
+    /**
+     * Aggiunge un'unità direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param parent L'unità padre a cui aggiungere la sottounità
+     * @param unit L'unità da aggiungere
+     * @return true se l'unità è stata aggiunta con successo
+     */
+    public boolean addUnitDirectly(OrganizationalUnit parent, OrganizationalUnit unit) {
+        if (parent == null || unit == null) {
+            return false;
+        }
+
+        try {
+            // Applica validazioni di base anche nell'operazione diretta
+            // ma cattura l'eccezione e ritorna false invece di propagarla
+            OrgChartValidator.validateAddUnit(parent, unit);
+
+            parent.addSubUnit(unit);
+            notifyObservers();
+            return true;
+        } catch (ValidationException ex) {
+            util.Logger.logError("Validazione fallita in addUnitDirectly: " + ex.getMessage(), "Operazione Command");
+            return false;
+        }
+    }
+
+    /**
+     * Rimuove un'unità direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param parent L'unità padre da cui rimuovere la sottounità
+     * @param unit L'unità da rimuovere
+     */
+    public void removeUnitDirectly(OrganizationalUnit parent, OrganizationalUnit unit) {
+        if (parent != null && unit != null) {
+            parent.removeSubUnit(unit);
+            notifyObservers();
+        }
+    }
+
+    /**
+     * Aggiunge un dipendente a un'unità direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param unit L'unità a cui aggiungere il dipendente
+     * @param employee Il dipendente da aggiungere
+     * @return true se il dipendente è stato aggiunto con successo
+     */
+    public boolean addEmployeeDirectly(OrganizationalUnit unit, Employee employee) {
+        if (unit == null || employee == null) {
+            return false;
+        }
+
+        List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
+        if (!employees.contains(employee)) {
+            employees.add(employee);
+            employee.addUnit(unit);
+            notifyObservers();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Rimuove un dipendente da un'unità direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param unit L'unità da cui rimuovere il dipendente
+     * @param employee Il dipendente da rimuovere
+     */
+    public void removeEmployeeDirectly(OrganizationalUnit unit, Employee employee) {
+        if (unit != null && employee != null) {
+            List<Employee> employees = employeesByUnit.get(unit);
+            if (employees != null) {
+                employees.remove(employee);
+                employee.removeUnit(unit);
+
+                // Rimuovi anche tutti i ruoli del dipendente in questa unità
+                for (Role role : new ArrayList<>(employee.getRoles())) {
+                    if (role.getUnit() == unit) {
+                        employee.removeRole(role);
+                    }
+                }
+
+                notifyObservers();
+            }
+        }
+    }
+
+    /**
+     * Assegna un ruolo a un dipendente direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param unit L'unità in cui assegnare il ruolo
+     * @param employee Il dipendente a cui assegnare il ruolo
+     * @param roleName Il nome del ruolo da assegnare
+     * @return true se il ruolo è stato assegnato con successo
+     */
+    public boolean assignRoleDirectly(OrganizationalUnit unit, Employee employee, String roleName) {
+        if (unit == null || employee == null || roleName == null || roleName.isEmpty()) {
+            return false;
+        }
+
+        // Cerca se il ruolo esiste già nell'unità
+        Role role = null;
+        for (Role r : unit.getRoles()) {
+            if (r.getName().equals(roleName)) {
+                role = r;
+                break;
+            }
+        }
+
+        // Se il ruolo non esiste, crealo
+        if (role == null) {
+            role = new Role(roleName, "");
+            role.setUnit(unit);
+            unit.addRole(role);
+        }
+
+        // Assicurati che il dipendente sia associato all'unità
+        List<Employee> employees = employeesByUnit.computeIfAbsent(unit, k -> new ArrayList<>());
+        if (!employees.contains(employee)) {
+            employees.add(employee);
+        }
+
+        // Prima rimuovi qualsiasi ruolo precedente nella stessa unità
+        for (Role r : new ArrayList<>(employee.getRoles())) {
+            if (r.getUnit() == unit) {
+                employee.removeRole(r);
+            }
+        }
+
+        // Assegna il nuovo ruolo
+        employee.addRole(role);
+        employee.addUnit(unit);
+
+        notifyObservers();
+        return true;
+    }
+
+    /**
+     * Rimuove un ruolo da un dipendente direttamente senza effettuare validazioni.
+     * Questo metodo viene utilizzato dal pattern Command per le operazioni di undo/redo.
+     * @param unit L'unità in cui rimuovere il ruolo
+     * @param employee Il dipendente a cui rimuovere il ruolo
+     */
+    public void removeRoleDirectly(OrganizationalUnit unit, Employee employee) {
+        if (unit != null && employee != null) {
+            // Rimuovi tutti i ruoli del dipendente in questa unità
+            for (Role role : new ArrayList<>(employee.getRoles())) {
+                if (role.getUnit() == unit) {
+                    employee.removeRole(role);
+                }
+            }
+
+            // Controlla se il dipendente ha ancora altri ruoli nell'unità
+            boolean hasOtherRolesInUnit = false;
+            for (Role r : employee.getRoles()) {
+                if (r.getUnit() == unit) {
+                    hasOtherRolesInUnit = true;
+                    break;
+                }
+            }
+
+            // Se non ha più ruoli nell'unità, rimuovilo dall'unità
+            if (!hasOtherRolesInUnit) {
+                List<Employee> employees = employeesByUnit.get(unit);
+                if (employees != null) {
+                    employees.remove(employee);
+                }
+                employee.removeUnit(unit);
+            }
+
+            notifyObservers();
+        }
+    }
+
+    /**
+     * Adds a role to a unit directly with basic validation
+     * Used by AddRoleCommand for execute and by RemoveRoleCommand for undo
+     * @param unit The unit to add the role to
+     * @param role The role to add
+     * @return true if successful, false otherwise
+     */
+    public boolean addRoleDirectly(OrganizationalUnit unit, Role role) {
+        try {
+            // Applica validazioni di base anche nell'operazione diretta
+            // ma cattura l'eccezione e ritorna false invece di propagarla
+            OrgChartValidator.validateAddRole(unit, role);
+
+            unit.addRole(role);
+            notifyObservers();
+            return true;
+        } catch (ValidationException ex) {
+            util.Logger.logError("Validazione fallita in addRoleDirectly: " + ex.getMessage(), "Operazione Command");
+            return false;
+        } catch (Exception e) {
+            util.Logger.logError("Errore in addRoleDirectly: " + e.getMessage(), "Errore");
+            return false;
+        }
+    }
+
+    /**
+     * Removes a role from a unit directly without validation
+     * Used by RemoveRoleCommand for execute and by AddRoleCommand for undo
+     * @param unit The unit to remove the role from
+     * @param role The role to remove
+     * @return true if successful, false otherwise
+     */
+    public boolean removeRoleDirectly(OrganizationalUnit unit, Role role) {
+        try {
+            unit.removeRole(role);
+            notifyObservers();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Assigns an employee to a role in a unit directly without validation
+     * Used by AssignRoleCommand for execute
+     * @param employee The employee to assign
+     * @param role The role to assign the employee to
+     * @param unit The unit containing the role
+     * @return true if successful, false otherwise
+     */
+    public boolean assignEmployeeToRoleDirectly(Employee employee, Role role, OrganizationalUnit unit) {
+        try {
+            role.addEmployee(employee);
+            employee.addUnit(unit);
+            notifyObservers();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Removes an employee from a role in a unit directly without validation
+     * Used by AssignRoleCommand for undo
+     * @param employee The employee to remove
+     * @param role The role to remove the employee from
+     * @param unit The unit containing the role
+     * @return true if successful, false otherwise
+     */
+    public boolean removeEmployeeFromRoleDirectly(Employee employee, Role role, OrganizationalUnit unit) {
+        try {
+            role.removeEmployee(employee);
+            // Check if employee still has roles in this unit
+            boolean hasRolesInUnit = false;
+            for (Role r : employee.getRoles()) {
+                if (r.getUnit() == unit) {
+                    hasRolesInUnit = true;
+                    break;
+                }
+            }
+            if (!hasRolesInUnit) {
+                employee.removeUnit(unit);
+            }
+            notifyObservers();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

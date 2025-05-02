@@ -41,9 +41,9 @@ public class OrgChartValidator {
             throw new ValidationException("Groups cannot contain sub-units.");
         }
 
-        // Check if we're trying to add a Board unit to anything other than root
-        if (newUnit instanceof Board && parent instanceof OrganizationalUnit) {
-            throw new ValidationException("Board units can only be added at the root level of the organization chart.");
+        // Check if we're trying to add a Board unit to anything (Board deve essere solo la radice)
+        if (newUnit instanceof Board) {
+            throw new ValidationException("Board units can only exist at the root level of the organization chart and cannot be added as sub-units.");
         }
 
         // If parent is Department and new unit is not Group or Department, throw exception
@@ -77,8 +77,25 @@ public class OrgChartValidator {
 
         // Check if this is a recognized role type
         if (roleType == null) {
-            throw new ValidationException("Role name '" + role.getName() +
-                    "' is not a valid role type. Valid types depend on the unit type (Department, Group, or Board).");
+            // Crea un messaggio dettagliato con i ruoli validi per il tipo di unità corrente
+            StringBuilder validRoles = new StringBuilder();
+
+            if (unit instanceof Department) {
+                validRoles.append("Per i Dipartimenti: Direttore, Consigliere, Responsabile Amministrativo, ")
+                        .append("Referente Tecnico, Responsabile Commerciale, Responsabile Risorse Umane, ")
+                        .append("Responsabile Logistica, Analista, Consulente, Data Protection Officer, ")
+                        .append("Chief Financial Officer, Chief Technology Officer, HR Specialist, Quality Assurance Manager");
+            } else if (unit instanceof Group) {
+                validRoles.append("Per i Gruppi: Coordinatore, Consigliere, Team Leader, Tutor, Collaboratore, Membro, Stagista");
+            } else if (unit instanceof Board) {
+                validRoles.append("Per i Board: Presidente, Vicepresidente, Segretario");
+            } else {
+                validRoles.append("Ruoli generici: Consigliere");
+            }
+
+            throw new ValidationException("Il ruolo '" + role.getName() +
+                    "' non è un tipo di ruolo valido per questa unità.\n\nRuoli validi per questo tipo di unità:\n" +
+                    validRoles.toString());
         }
 
         // Check if the role type is valid for this unit type

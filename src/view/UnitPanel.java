@@ -2,6 +2,9 @@ package view;
 
 import controller.OrgChartManager;
 import model.*;
+import command.Command;
+import command.RemoveRoleCommand;
+import command.CommandManager;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -316,24 +319,36 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
                 Role newRole = new Role(roleName, description);
 
                 try {
-                    // Tenta di aggiungere il ruolo all'unità
-                    boolean added = manager.addRole(currentUnit, newRole);
+                    // Creiamo un comando per l'operazione
+                    Command addRoleCommand = new command.AddRoleCommand(currentUnit, newRole);
 
-                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                    String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" +
-                            currentUnit.getName() + "' (" + unitType + ").";
+                    // Otteniamo il CommandManager dalla finestra principale
+                    CommandManager commandManager = ((OrgChartGUI) SwingUtilities.getWindowAncestor(this)).getCommandManager();
 
-                    // Registra il successo nel logger
-                    util.Logger.logInfo(successMessage, "Operazione Completata");
+                    // Eseguiamo il comando tramite il CommandManager per supportare undo/redo
+                    boolean added = commandManager.executeCommand(addRoleCommand);
 
-                    // Mostra un messaggio di conferma all'utente
-                    JOptionPane.showMessageDialog(dialog.getOwner(),
-                            successMessage,
-                            "Ruolo Aggiunto",
-                            JOptionPane.INFORMATION_MESSAGE);
+                    if (added) {
+                        // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                        String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" +
+                                currentUnit.getName() + "' (" + unitType + ").";
 
-                    // Chiudi la finestra di dialogo
-                    dialog.dispose();
+                        // Registra il successo nel logger
+                        util.Logger.logInfo(successMessage, "Operazione Completata");
+
+                        // Mostra un messaggio di conferma all'utente
+                        JOptionPane.showMessageDialog(dialog.getOwner(),
+                                successMessage,
+                                "Ruolo Aggiunto",
+                                JOptionPane.INFORMATION_MESSAGE);
+
+                        // Chiudi la finestra di dialogo
+                        dialog.dispose();
+                    } else {
+                        JOptionPane.showMessageDialog(dialog,
+                                "Non è stato possibile aggiungere il ruolo.",
+                                "Errore", JOptionPane.ERROR_MESSAGE);
+                    }
                 } catch (model.ValidationException ex) {
                     // Gestione dell'errore di validazione
 
@@ -401,7 +416,23 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
                                 "Conferma Rimozione", JOptionPane.YES_NO_OPTION);
 
                         if (choice == JOptionPane.YES_OPTION) {
-                            manager.removeRole(currentUnit, role);
+                            // Creiamo un comando per la rimozione del ruolo
+                            Command removeRoleCommand = new RemoveRoleCommand(currentUnit, role);
+
+                            // Otteniamo il CommandManager dalla finestra principale
+                            CommandManager commandManager = ((OrgChartGUI) SwingUtilities.getWindowAncestor(this)).getCommandManager();
+
+                            // Eseguiamo il comando tramite il CommandManager per supportare undo/redo
+                            boolean removed = commandManager.executeCommand(removeRoleCommand);
+
+                            if (removed) {
+                                String successMessage = "Ruolo '" + role.getName() + "' rimosso dall'unità '" + currentUnit.getName() + "'.";
+                                util.Logger.logInfo(successMessage, "Operazione Completata");
+                            } else {
+                                JOptionPane.showMessageDialog(this,
+                                        "Non è stato possibile rimuovere il ruolo.",
+                                        "Errore", JOptionPane.ERROR_MESSAGE);
+                            }
                         }
                     }
                 });
@@ -636,26 +667,26 @@ public class UnitPanel extends JPanel implements OrgChartManager.Observer {
                             // Otteniamo direttamente i dati mappati per questa riga
                             EmployeeRoleMapping mapping = employeeRoleMappings.get(row);
                             Employee targetEmployee = mapping.employee;
-                            Role targetRole = mapping.role;
+                            Role role = mapping.role;
 
-                            // Conferma rimozione
+                            // Chiediamo conferma all'utente
                             int choice = JOptionPane.showConfirmDialog(UnitPanel.this,
-                                    "Sei sicuro di voler rimuovere " + targetEmployee.getName() +
-                                            " dal ruolo " + targetRole.getName() + "?",
+                                    "Sei sicuro di voler rimuovere il dipendente '" + targetEmployee.getName() +
+                                            "' dal ruolo '" + role.getName() + "'?",
                                     "Conferma Rimozione", JOptionPane.YES_NO_OPTION);
 
                             if (choice == JOptionPane.YES_OPTION) {
-                                // Rimuoviamo l'employee dal ruolo - ora utilizziamo direttamente gli oggetti dalla mappatura
-                                manager.removeEmployeeFromRole(targetEmployee, targetRole, currentUnit);
+                                // Rimuovi il dipendente dal ruolo
+                                manager.removeEmployeeFromRole(targetEmployee, role, currentUnit);
 
-                                // Mostriamo la conferma
+                                // Mostra conferma
                                 JOptionPane.showMessageDialog(UnitPanel.this,
-                                        "Dipendente '" + targetEmployee.getName() + "' è stato rimosso dal ruolo '" +
-                                                targetRole.getName() + "' nell'unità '" + currentUnit.getName() + "'.",
+                                        "Il dipendente '" + targetEmployee.getName() +
+                                                "' è stato rimosso dal ruolo '" + role.getName() + "'.",
                                         "Dipendente Rimosso",
                                         JOptionPane.INFORMATION_MESSAGE);
 
-                                // Aggiorniamo la vista
+                                // Aggiorna la vista
                                 displayUnit(currentUnit);
                             }
                         }

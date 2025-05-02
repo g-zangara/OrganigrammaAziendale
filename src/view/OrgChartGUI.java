@@ -4,20 +4,22 @@ import controller.OrgChartManager;
 import factory.StorageFactory;
 import model.*;
 import factory.UnitFactory;
+import command.*;
 
 import javax.swing.*;
 import javax.swing.event.*;
 import javax.swing.tree.*;
 import java.awt.*;
+import java.awt.event.KeyEvent;
 import java.io.File;
 import java.util.*;
-import java.util.List;
 
 /**
  * Main application window for the Organization Chart Manager.
  * Implements the Observer pattern to receive updates from the controller.
+ * Implementa anche CommandManager.CommandHistoryListener per l'aggiornamento dei bottoni di undo/redo.
  */
-public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
+public class OrgChartGUI extends JFrame implements OrgChartManager.Observer, CommandManager.CommandHistoryListener {
     private OrgChartManager manager;
     private JTree orgTree;
     private DefaultTreeModel treeModel;
@@ -30,6 +32,15 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
     private Map<OrganizationalUnit, DefaultMutableTreeNode> unitToNodeMap;
 
+    // Command Manager per la gestione di undo/redo
+    private CommandManager commandManager;
+
+    // Componenti UI per undo/redo
+    private JButton undoButton;
+    private JButton redoButton;
+    private JMenuItem undoMenuItem;
+    private JMenuItem redoMenuItem;
+
     /**
      * Constructor for the main GUI window
      */
@@ -37,6 +48,10 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
         manager = OrgChartManager.getInstance();
         manager.addObserver(this);
         unitToNodeMap = new HashMap<>();
+
+        // Inizializza il CommandManager e registra questa classe come listener
+        commandManager = CommandManager.getInstance();
+        commandManager.addListener(this);
 
         initializeUI();
 
@@ -57,6 +72,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
         // Create the menu bar
         createMenuBar();
+
+        // Create toolbar with action buttons
+        createToolBar();
 
         // Create the main layout with split pane
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
@@ -87,6 +105,43 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
             // Force tree to expand root
             orgTree.expandPath(new TreePath(rootNode.getPath()));
         });
+    }
+
+    /**
+     * Crea la toolbar con i pulsanti per le azioni principali
+     */
+    private void createToolBar() {
+        JToolBar toolBar = new JToolBar();
+        toolBar.setFloatable(false);  // Imposta la toolbar come non mobile
+
+        // Pulsanti per undo/redo
+        undoButton = new JButton("Undo");
+        undoButton.setToolTipText("Annulla ultima operazione");
+        undoButton.addActionListener(e -> performUndo());
+        undoButton.setEnabled(false);
+        toolBar.add(undoButton);
+
+        redoButton = new JButton("Redo");
+        redoButton.setToolTipText("Ripeti operazione annullata");
+        redoButton.addActionListener(e -> performRedo());
+        redoButton.setEnabled(false);
+        toolBar.add(redoButton);
+
+        toolBar.addSeparator();
+
+        // Aggiungi altri pulsanti per operazioni comuni
+        JButton addUnitButton = new JButton("Add Unit");
+        addUnitButton.setToolTipText("Aggiungi una nuova unità organizzativa");
+        addUnitButton.addActionListener(e -> showAddUnitDialog());
+        toolBar.add(addUnitButton);
+
+        JButton addEmployeeButton = new JButton("Add Employee");
+        addEmployeeButton.setToolTipText("Aggiungi un nuovo dipendente");
+        addEmployeeButton.addActionListener(e -> showAddEmployeeDialog());
+        toolBar.add(addEmployeeButton);
+
+        // Aggiungi la toolbar in alto
+        getContentPane().add(toolBar, BorderLayout.NORTH);
     }
 
     /**
@@ -240,6 +295,21 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
         // Edit menu
         JMenu editMenu = new JMenu("Edit");
+
+        // Undo/Redo menu items
+        undoMenuItem = new JMenuItem("Undo");
+        undoMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK));
+        undoMenuItem.addActionListener(e -> performUndo());
+        undoMenuItem.setEnabled(false);
+        editMenu.add(undoMenuItem);
+
+        redoMenuItem = new JMenuItem("Redo");
+        redoMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, KeyEvent.CTRL_DOWN_MASK));
+        redoMenuItem.addActionListener(e -> performRedo());
+        redoMenuItem.setEnabled(false);
+        editMenu.add(redoMenuItem);
+
+        editMenu.addSeparator();
 
         JMenuItem addUnitItem = new JMenuItem("Add Unit");
         addUnitItem.addActionListener(e -> showAddUnitDialog());
@@ -509,25 +579,34 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
             OrganizationalUnit newUnit = UnitFactory.createUnit(typeInEnglish, name);
 
             try {
-                // Tenta di aggiungere l'unità al genitore
-                // Questo lancerà un'eccezione se l'operazione non è valida
-                boolean added = manager.addUnit(parentUnit, newUnit);
+                // Crea un comando per l'operazione
+                Command addUnitCommand = new AddUnitCommand(parentUnit, newUnit);
 
-                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                String successMessage = "Unità '" + name + "' (" + type + ") aggiunta a '" +
-                        parentUnit.getName() + "' (" + parentType + ").";
+                // Esegue il comando tramite il CommandManager per supportare undo/redo
+                boolean added = commandManager.executeCommand(addUnitCommand);
 
-                // Registra il successo nel logger
-                util.Logger.logInfo(successMessage, "Operazione Completata");
+                if (added) {
+                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                    String successMessage = "Unità '" + name + "' (" + type + ") aggiunta a '" +
+                            parentUnit.getName() + "' (" + parentType + ").";
 
-                // Mostra un messaggio di conferma all'utente
-                JOptionPane.showMessageDialog(this,
-                        successMessage,
-                        "Unità Aggiunta",
-                        JOptionPane.INFORMATION_MESSAGE);
+                    // Registra il successo nel logger
+                    util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                // Chiudi la finestra di dialogo
-                dialog.dispose();
+                    // Mostra un messaggio di conferma all'utente
+                    JOptionPane.showMessageDialog(this,
+                            successMessage,
+                            "Unità Aggiunta",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    // Chiudi la finestra di dialogo
+                    dialog.dispose();
+                } else {
+                    // L'esecuzione del comando è fallita
+                    JOptionPane.showMessageDialog(this,
+                            "Non è stato possibile aggiungere l'unità.",
+                            "Errore", JOptionPane.ERROR_MESSAGE);
+                }
 
                 // Aggiorna l'albero e seleziona il nuovo nodo
                 SwingUtilities.invokeLater(() -> {
@@ -615,7 +694,7 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
         OrganizationalUnit parentUnit = (OrganizationalUnit) parentObject;
 
         // Check if the unit is empty (no employees and no subunits)
-        List<OrganizationalUnit> subUnits = selectedUnit.getSubUnits();
+        java.util.List<OrganizationalUnit> subUnits = selectedUnit.getSubUnits();
 
         // Count total employees in all roles of this unit
         int totalEmployees = 0;
@@ -627,20 +706,30 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
         // If the unit is empty, remove it without confirmation
         if (isEmpty) {
-            manager.removeUnit(parentUnit, selectedUnit);
+            // Crea un comando per l'operazione
+            Command removeUnitCommand = new RemoveUnitCommand(parentUnit, selectedUnit);
 
-            // Show confirmation
-            JOptionPane.showMessageDialog(this,
-                    "Unit '" + selectedUnit.getName() + "' has been removed.",
-                    "Unit Removed",
-                    JOptionPane.INFORMATION_MESSAGE);
+            // Esegue il comando tramite il CommandManager per supportare undo/redo
+            boolean removed = commandManager.executeCommand(removeUnitCommand);
 
-            // Select the parent node and show its details
-            TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
-            TreePath path = new TreePath(pathToParent);
-            orgTree.setSelectionPath(path);
-            orgTree.scrollPathToVisible(path);
-            showUnitDetails(parentUnit);
+            if (removed) {
+                // Show confirmation
+                JOptionPane.showMessageDialog(this,
+                        "Unit '" + selectedUnit.getName() + "' has been removed.",
+                        "Unit Removed",
+                        JOptionPane.INFORMATION_MESSAGE);
+
+                // Select the parent node and show its details
+                TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
+                TreePath path = new TreePath(pathToParent);
+                orgTree.setSelectionPath(path);
+                orgTree.scrollPathToVisible(path);
+                showUnitDetails(parentUnit);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Failed to remove unit '" + selectedUnit.getName() + "'.",
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
         // If the unit contains employees or subunits, show a confirmation dialog
         else {
@@ -663,20 +752,30 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
                     "Confirm Deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 
             if (choice == JOptionPane.YES_OPTION) {
-                manager.removeUnit(parentUnit, selectedUnit);
+                // Crea un comando per l'operazione
+                Command removeUnitCommand = new RemoveUnitCommand(parentUnit, selectedUnit);
 
-                // Show confirmation
-                JOptionPane.showMessageDialog(this,
-                        "Unit '" + selectedUnit.getName() + "' and all its contents have been removed.",
-                        "Unit Removed",
-                        JOptionPane.INFORMATION_MESSAGE);
+                // Esegue il comando tramite il CommandManager per supportare undo/redo
+                boolean removed = commandManager.executeCommand(removeUnitCommand);
 
-                // Select the parent node and show its details
-                TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
-                TreePath path = new TreePath(pathToParent);
-                orgTree.setSelectionPath(path);
-                orgTree.scrollPathToVisible(path);
-                showUnitDetails(parentUnit);
+                if (removed) {
+                    // Show confirmation
+                    JOptionPane.showMessageDialog(this,
+                            "Unit '" + selectedUnit.getName() + "' and all its contents have been removed.",
+                            "Unit Removed",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    // Select the parent node and show its details
+                    TreeNode[] pathToParent = treeModel.getPathToRoot(parentNode);
+                    TreePath path = new TreePath(pathToParent);
+                    orgTree.setSelectionPath(path);
+                    orgTree.scrollPathToVisible(path);
+                    showUnitDetails(parentUnit);
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                            "Failed to remove unit '" + selectedUnit.getName() + "' and its contents.",
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
             }
         }
     }
@@ -798,30 +897,38 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
             Role newRole = new Role(roleName, description);
 
             try {
-                // Tenta di aggiungere il ruolo all'unità
-                // Questo lancerà un'eccezione se il ruolo non è valido per l'unità
-                boolean added = manager.addRole(unit, newRole);
+                // Crea un comando per l'operazione
+                Command addRoleCommand = new AddRoleCommand(unit, newRole);
 
-                // Se siamo arrivati qui, l'aggiunta è andata a buon fine
-                String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" + unit.getName() + "' (" + unitType + ").";
+                // Esegue il comando tramite il CommandManager per supportare undo/redo
+                boolean added = commandManager.executeCommand(addRoleCommand);
 
-                // Registra il successo nel logger
-                util.Logger.logInfo(successMessage, "Operazione Completata");
+                if (added) {
+                    // Se siamo arrivati qui, l'aggiunta è andata a buon fine
+                    String successMessage = "Ruolo '" + roleName + "' aggiunto all'unità '" + unit.getName() + "' (" + unitType + ").";
 
-                // Mostra un messaggio di conferma all'utente
-                JOptionPane.showMessageDialog(this,
-                        successMessage,
-                        "Ruolo Aggiunto",
-                        JOptionPane.INFORMATION_MESSAGE);
+                    // Registra il successo nel logger
+                    util.Logger.logInfo(successMessage, "Operazione Completata");
 
-                // Chiudi la finestra di dialogo
-                dialog.dispose();
+                    // Mostra un messaggio di conferma all'utente
+                    JOptionPane.showMessageDialog(this,
+                            successMessage,
+                            "Ruolo Aggiunto",
+                            JOptionPane.INFORMATION_MESSAGE);
 
-                // Aggiorna la visualizzazione dell'albero
-                update();
+                    // Chiudi la finestra di dialogo
+                    dialog.dispose();
 
-                // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
-                selectAndShowUnit(unit);
+                    // Aggiorna la visualizzazione dell'albero
+                    update();
+
+                    // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
+                    selectAndShowUnit(unit);
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                            "Non è stato possibile aggiungere il ruolo.",
+                            "Errore", JOptionPane.ERROR_MESSAGE);
+                }
             } catch (model.ValidationException ex) {
                 // Gestione dell'errore di validazione
 
@@ -971,11 +1078,12 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
             Employee newEmployee = new Employee(name);
 
             try {
-                // Tenta di assegnare il dipendente al ruolo nell'unità
-                // Questo lancerà un'eccezione se l'assegnazione non è valida
-                boolean added = manager.assignEmployeeToRole(newEmployee, selectedRole, unit);
+                // Crea un comando per l'operazione
+                Command assignEmployeeCommand = new AssignRoleCommand(unit, selectedRole, newEmployee);
 
-                // Se l'aggiunta è stata completata con successo
+                // Esegue il comando tramite il CommandManager per supportare undo/redo
+                boolean added = commandManager.executeCommand(assignEmployeeCommand);
+
                 if (added) {
                     // Crea il messaggio di successo
                     String successMessage = "Dipendente '" + name + "' aggiunto e assegnato al ruolo '" +
@@ -998,6 +1106,10 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
                     // Seleziona nuovamente l'unità per mostrare i dettagli aggiornati
                     selectAndShowUnit(unit);
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                            "Non è stato possibile aggiungere il dipendente.",
+                            "Errore", JOptionPane.ERROR_MESSAGE);
                 }
             } catch (model.ValidationException ex) {
                 // Gestione dell'errore di validazione
@@ -1048,6 +1160,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
                     JOptionPane.QUESTION_MESSAGE);
 
             if (name != null && !name.trim().isEmpty()) {
+                // Pulisce la storia dei comandi quando si crea un nuovo grafico
+                commandManager.clearHistory();
+
                 // Crea un nuovo organigramma
                 manager.createNewOrgChart(name.trim());
 
@@ -1090,6 +1205,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
                     return false;
                 }
 
+                // Pulisce la storia dei comandi quando si carica un file
+                commandManager.clearHistory();
+
                 boolean success = manager.loadOrgChart(filePath);
                 if (success) {
                     JOptionPane.showMessageDialog(this,
@@ -1107,6 +1225,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
 
         // If the user cancelled, create a default chart
         if (manager.getRootUnit() == null) {
+            // Pulisce la storia dei comandi quando si crea un grafico di default
+            commandManager.clearHistory();
+
             manager.createNewOrgChart("Default Company");
 
             // Seleziona automaticamente il dipartimento di default creato
@@ -1172,6 +1293,59 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
     }
 
     /**
+     * Esegue l'operazione di undo tramite il CommandManager
+     */
+    private void performUndo() {
+        commandManager.undo();
+    }
+
+    /**
+     * Esegue l'operazione di redo tramite il CommandManager
+     */
+    private void performRedo() {
+        commandManager.redo();
+    }
+
+    /**
+     * Callback chiamata quando lo stato della history cambia
+     * Implementazione dell'interfaccia CommandHistoryListener
+     */
+    @Override
+    public void historyChanged() {
+        // Aggiorna lo stato dei pulsanti e delle voci di menu in base alla disponibilità di undo/redo
+        boolean canUndo = commandManager.canUndo();
+        boolean canRedo = commandManager.canRedo();
+
+        // Aggiorna le voci di menu
+        undoMenuItem.setEnabled(canUndo);
+        redoMenuItem.setEnabled(canRedo);
+
+        // Imposta le descrizioni per le operazioni disponibili
+        if (canUndo) {
+            undoMenuItem.setText("Undo: " + commandManager.getUndoDescription());
+        } else {
+            undoMenuItem.setText("Undo");
+        }
+
+        if (canRedo) {
+            redoMenuItem.setText("Redo: " + commandManager.getRedoDescription());
+        } else {
+            redoMenuItem.setText("Redo");
+        }
+
+        // Aggiorna anche i pulsanti se presenti
+        if (undoButton != null) {
+            undoButton.setEnabled(canUndo);
+            undoButton.setToolTipText(canUndo ? "Undo: " + commandManager.getUndoDescription() : "Undo");
+        }
+
+        if (redoButton != null) {
+            redoButton.setEnabled(canRedo);
+            redoButton.setToolTipText(canRedo ? "Redo: " + commandManager.getRedoDescription() : "Redo");
+        }
+    }
+
+    /**
      * Selects a unit in the tree and displays its details
      * @param unit The organizational unit to select and display
      */
@@ -1215,6 +1389,9 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
                 manager.setStorageStrategy(StorageFactory.createStorageStrategy(
                         StorageFactory.StorageType.DBMS));
             }
+
+            // Pulisce la storia dei comandi quando si carica un file di test
+            commandManager.clearHistory();
 
             // Carica il file
             boolean success = manager.loadOrgChart(filePath);
@@ -1293,5 +1470,14 @@ public class OrgChartGUI extends JFrame implements OrgChartManager.Observer {
         }
 
         return uniqueEmployees;
+    }
+
+    /**
+     * Restituisce il CommandManager utilizzato da questa GUI
+     * Necessario per il pattern Command e utilizzato dai pannelli
+     * @return l'istanza del CommandManager
+     */
+    public CommandManager getCommandManager() {
+        return this.commandManager;
     }
 }
